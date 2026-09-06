@@ -6,5 +6,6 @@ httpx
 sqlalchemy
 alembic
 cryptography
+sentence-transformers
 
 pytest
