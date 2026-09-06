@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -20,3 +20,20 @@ def get_config_status(
     db: Session = Depends(get_db),
 ):
     return ConfigService.get_status(db)
+
+
+@router.post(
+    "/complete",
+    response_model=ConfigStatusResponse,
+)
+def complete_setup(
+    db: Session = Depends(get_db),
+):
+    try:
+        return ConfigService.complete_setup(db)
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc

@@ -3,5 +3,10 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
+# Local secrets and environment-specific configuration.
+.env
+.env.*
+!.env.example
+
 backend/data/*.db
 backend/data/secret.key

@@ -1,40 +1,32 @@
-import { getBackendHealth } from "@/lib/api";
+import { redirect } from "next/navigation";
+
+import { getConfigStatus } from "@/lib/api";
 
 export default async function Home() {
-  let backendConnected = false;
+  let configured: boolean;
 
   try {
-    const health = await getBackendHealth();
-    backendConnected = health.status === "ok";
+    const config = await getConfigStatus();
+    configured = config.configured;
   } catch {
-    backendConnected = false;
-  }
+    return (
+      <main className="min-h-screen bg-zinc-950 text-white">
+        <div className="mx-auto max-w-5xl px-6 py-20">
+          <p className="text-sm text-zinc-500">AgentDesk</p>
 
-  return (
-    <main className="min-h-screen bg-zinc-950 text-white">
-      <div className="mx-auto max-w-6xl px-6 py-16">
-        <p className="text-sm font-medium text-zinc-400">
-          AgentDesk
-        </p>
+          <h1 className="mt-4 text-4xl font-semibold">Backend unavailable</h1>
 
-        <h1 className="mt-4 text-4xl font-semibold tracking-tight">
-          AI Customer Support Platform
-        </h1>
-
-        <p className="mt-4 max-w-2xl text-zinc-400">
-          Self-hosted AI customer support automation.
-        </p>
-
-        <div className="mt-10 rounded-xl border border-zinc-800 bg-zinc-900 p-6">
-          <p className="text-sm text-zinc-400">
-            Backend status
-          </p>
-
-          <p className="mt-2 font-medium">
-            {backendConnected ? "Connected" : "Disconnected"}
+          <p className="mt-4 text-zinc-400">
+            Start the AgentDesk backend and refresh this page.
           </p>
         </div>
-      </div>
-    </main>
-  );
+      </main>
+    );
+  }
+
+  if (configured) {
+    redirect("/dashboard");
+  }
+
+  redirect("/setup");
 }

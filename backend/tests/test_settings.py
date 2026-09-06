@@ -74,11 +74,11 @@ def test_ai_settings_secret_is_not_returned():
     response = client.put(
         "/api/settings/ai",
         json={
-            "provider": "test-provider",
-            "model": "test-model",
+            "provider": "gemini",
+            "model": "gemini-2.5-flash",
             "api_key": secret,
             "embedding_provider": "local",
-            "embedding_model": "test-embedding",
+            "embedding_model": None,
             "enabled": True,
         },
     )

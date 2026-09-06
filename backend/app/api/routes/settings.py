@@ -4,6 +4,8 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 
 from app.schemas.ai_provider import (
+    AIConnectionTestRequest,
+    AIConnectionTestResponse,
     AIProviderResponse,
     AIProviderUpdate,
 )
@@ -12,9 +14,8 @@ from app.schemas.company import (
     CompanyUpdate,
 )
 
-from app.services.ai_provider_service import (
-    AIProviderService,
-)
+from app.services.ai_connection_service import AIConnectionService
+from app.services.ai_provider_service import AIProviderService
 from app.services.company_service import CompanyService
 
 
@@ -71,17 +72,7 @@ def get_ai_settings(
             detail="AI provider configuration not found.",
         )
 
-    return AIProviderResponse(
-        id=provider.id,
-        provider=provider.provider,
-        model=provider.model,
-        embedding_provider=provider.embedding_provider,
-        embedding_model=provider.embedding_model,
-        enabled=provider.enabled,
-        api_key_configured=bool(
-            provider.encrypted_api_key
-        ),
-    )
+    return AIProviderService.to_response(provider)
 
 
 @router.put(
@@ -92,19 +83,31 @@ def update_ai_settings(
     data: AIProviderUpdate,
     db: Session = Depends(get_db),
 ):
-    provider = AIProviderService.update(
-        db,
-        data,
+    try:
+        provider = AIProviderService.update(db, data)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+    return AIProviderService.to_response(provider)
+
+
+@router.post(
+    "/ai/test",
+    response_model=AIConnectionTestResponse,
+)
+async def test_ai_connection(
+    data: AIConnectionTestRequest,
+):
+    success, message = await AIConnectionService.test_connection(
+        provider=data.provider,
+        api_key=data.api_key.get_secret_value(),
+        model=data.model,
     )
 
-    return AIProviderResponse(
-        id=provider.id,
-        provider=provider.provider,
-        model=provider.model,
-        embedding_provider=provider.embedding_provider,
-        embedding_model=provider.embedding_model,
-        enabled=provider.enabled,
-        api_key_configured=bool(
-            provider.encrypted_api_key
-        ),
+    return AIConnectionTestResponse(
+        success=success,
+        message=message,
     )
