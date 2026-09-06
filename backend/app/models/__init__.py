@@ -4,6 +4,8 @@ from app.models.ai_provider import AIProvider
 from app.models.company import Company
 from app.models.customer import Customer
 from app.models.message import Message
+from app.models.knowledge_chunk import KnowledgeChunk
+from app.models.knowledge_document import KnowledgeDocument
 from app.models.system_config import SystemConfig
 from app.models.ticket import Ticket
 
@@ -14,6 +16,8 @@ __all__ = [
     "Company",
     "Customer",
     "Message",
+    "KnowledgeChunk",
+    "KnowledgeDocument",
     "SystemConfig",
     "Ticket",
 ]

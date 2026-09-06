@@ -165,6 +165,17 @@ def test_gemini_connection_test_is_server_side_and_redacts_the_key(
     class FakeResponse:
         status_code = 200
 
+        def json(self):
+            return {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [{"text": "OK"}],
+                        }
+                    }
+                ]
+            }
+
     class FakeAsyncClient:
         def __init__(self, *args, **kwargs):
             del args, kwargs
@@ -175,9 +186,10 @@ def test_gemini_connection_test_is_server_side_and_redacts_the_key(
         async def __aexit__(self, *args):
             del args
 
-        async def get(self, url, headers):
+        async def post(self, url, headers, json):
             observed["url"] = url
             observed["headers"] = headers
+            observed["json"] = json
             return FakeResponse()
 
     monkeypatch.setattr(
@@ -204,10 +216,23 @@ def test_gemini_connection_test_is_server_side_and_redacts_the_key(
     assert synthetic_key not in caplog.text
     assert observed["url"] == (
         "https://generativelanguage.googleapis.com/"
-        "v1beta/models/gemini-2.5-flash"
+        "v1beta/models/gemini-2.5-flash:generateContent"
     )
     assert observed["headers"] == {
         "x-goog-api-key": synthetic_key,
+        "content-type": "application/json",
+    }
+    assert observed["json"] == {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": "Reply with exactly OK."}],
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.0,
+            "maxOutputTokens": 256,
+        },
     }
 
 

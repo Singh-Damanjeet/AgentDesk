@@ -18,6 +18,7 @@ from app.ai.embeddings.local import LocalEmbeddingService
 from app.ai.llm.errors import (
     LLMAuthenticationError,
     LLMConfigurationError,
+    LLMInputError,
     LLMProviderError,
     LLMRateLimitError,
     LLMStructuredOutputError,
@@ -38,9 +39,15 @@ def run(coroutine):
 
 
 class FakeResponse:
-    def __init__(self, status_code: int, payload: object | None = None):
+    def __init__(
+        self,
+        status_code: int,
+        payload: object | None = None,
+        headers: dict[str, str] | None = None,
+    ):
         self.status_code = status_code
         self._payload = payload
+        self.headers = headers or {}
 
     def json(self):
         return self._payload
@@ -152,7 +159,45 @@ def test_gemini_chat_normalizes_response_and_metadata(monkeypatch):
     assert calls["post"][0]["json"]["systemInstruction"] == {
         "parts": [{"text": "Be concise."}],
     }
+    assert calls["post"][0]["url"] == (
+        "https://generativelanguage.googleapis.com/"
+        "v1beta/models/gemini-2.5-flash:generateContent"
+    )
     assert "synthetic-gemini-key" not in response.model_dump_json()
+
+
+def test_gemini_connection_test_uses_generation_endpoint_and_payload(monkeypatch):
+    calls = patch_http_client(
+        monkeypatch,
+        post_handler=lambda _attempt: FakeResponse(
+            200,
+            successful_gemini_payload("OK"),
+        ),
+    )
+    adapter = GeminiLLMAdapter(
+        api_key="synthetic-gemini-key",
+        model="models/gemini-3.6-flash",
+    )
+
+    run(adapter.test_connection())
+
+    assert calls["get"] == []
+    assert calls["post"][0]["url"] == (
+        "https://generativelanguage.googleapis.com/"
+        "v1beta/models/gemini-3.6-flash:generateContent"
+    )
+    assert calls["post"][0]["json"] == {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": "Reply with exactly OK."}],
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.0,
+            "maxOutputTokens": 256,
+        },
+    }
 
 
 def test_gemini_authentication_failure_is_safe_and_not_retried(monkeypatch):
@@ -251,7 +296,7 @@ def test_gemini_rate_limit_is_retried_then_mapped(monkeypatch):
     assert "synthetic-gemini-key" not in str(error.value)
 
 
-def test_gemini_permanent_provider_failure_is_not_retried(monkeypatch):
+def test_gemini_invalid_request_is_not_retried(monkeypatch):
     calls = patch_http_client(
         monkeypatch,
         post_handler=lambda _attempt: FakeResponse(400, {}),
@@ -261,7 +306,7 @@ def test_gemini_permanent_provider_failure_is_not_retried(monkeypatch):
         model="gemini-2.5-flash",
     )
 
-    with pytest.raises(LLMProviderError):
+    with pytest.raises(LLMInputError) as error:
         run(
             adapter.chat(
                 [ChatMessage(role="user", content="Hello")]
@@ -269,6 +314,51 @@ def test_gemini_permanent_provider_failure_is_not_retried(monkeypatch):
         )
 
     assert len(calls["post"]) == 1
+    assert error.value.user_message == "Gemini rejected the request as invalid."
+
+
+def test_gemini_not_found_preserves_safe_provider_diagnostics(
+    monkeypatch,
+    caplog,
+):
+    calls = patch_http_client(
+        monkeypatch,
+        post_handler=lambda _attempt: FakeResponse(
+            404,
+            {
+                "error": {
+                    "code": 404,
+                    "status": "NOT_FOUND",
+                    "message": "Model is unavailable to this account.",
+                }
+            },
+            headers={"x-request-id": "synthetic-request-id"},
+        ),
+    )
+    adapter = GeminiLLMAdapter(
+        api_key="synthetic-gemini-key",
+        model="gemini-2.5-flash",
+    )
+
+    with caplog.at_level("WARNING", logger="app.ai.llm.providers.gemini"):
+        with pytest.raises(LLMConfigurationError) as error:
+            run(
+                adapter.chat(
+                    [ChatMessage(role="user", content="Hello")]
+                )
+            )
+
+    assert len(calls["post"]) == 1
+    assert error.value.user_message == (
+        "The configured Gemini model or endpoint was not found."
+    )
+    assert "provider=gemini" in caplog.text
+    assert "model=gemini-2.5-flash" in caplog.text
+    assert "http_status=404" in caplog.text
+    assert "google_error_status=NOT_FOUND" in caplog.text
+    assert "google_error_code=404" in caplog.text
+    assert "request_id=synthetic-request-id" in caplog.text
+    assert "synthetic-gemini-key" not in caplog.text
 
 
 def test_llm_factory_resolves_gemini_and_rejects_unsupported_provider():

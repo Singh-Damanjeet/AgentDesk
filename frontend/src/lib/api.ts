@@ -81,6 +81,65 @@ export type DashboardOverview = {
   };
 };
 
+export type KnowledgeDocumentStatus =
+  | "uploaded"
+  | "processing"
+  | "ready"
+  | "failed";
+
+export type KnowledgeDocument = {
+  id: string;
+  filename: string;
+  original_filename: string;
+  file_type: string;
+  file_size: number;
+  status: KnowledgeDocumentStatus;
+  chunk_count: number;
+  created_at: string;
+  updated_at: string;
+  error: string | null;
+};
+
+export type KnowledgeChunk = {
+  id: string;
+  chunk_index: number;
+  page_number: number | null;
+  section: string | null;
+  token_count: number;
+  char_start: number;
+  char_end: number;
+};
+
+export type KnowledgeDocumentDetail = KnowledgeDocument & {
+  chunks: KnowledgeChunk[];
+};
+
+export type RAGQueryRequest = {
+  question: string;
+};
+
+export type RAGSource = {
+  document_id: string;
+  document_name: string;
+  chunk_id: string;
+  page: number | null;
+  section: string | null;
+  score: number;
+};
+
+export type RAGRetrievedChunk = RAGSource & {
+  content: string;
+};
+
+export type RAGResponse = {
+  answer: string;
+  sources: RAGSource[];
+  retrieved_chunks: RAGRetrievedChunk[];
+  insufficient_evidence: boolean;
+  latency_ms: number;
+  trace_id: string;
+};
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
@@ -240,5 +299,88 @@ export async function completeSetup(): Promise<ConfigStatusResponse> {
       method: "POST",
     },
     "Unable to complete AgentDesk setup",
+  );
+}
+
+export async function uploadKnowledgeDocument(
+  file: File,
+): Promise<KnowledgeDocument> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  return requestJson<KnowledgeDocument>(
+    "/api/knowledge/documents",
+    {
+      method: "POST",
+      body: formData,
+    },
+    "Unable to upload knowledge document",
+  );
+}
+
+export async function listKnowledgeDocuments(): Promise<KnowledgeDocument[]> {
+  return requestJson<KnowledgeDocument[]>(
+    "/api/knowledge/documents",
+    {
+      cache: "no-store",
+    },
+    "Unable to load knowledge documents",
+  );
+}
+
+export async function getKnowledgeDocument(
+  documentId: string,
+): Promise<KnowledgeDocumentDetail> {
+  return requestJson<KnowledgeDocumentDetail>(
+    `/api/knowledge/documents/${encodeURIComponent(documentId)}`,
+    {
+      cache: "no-store",
+    },
+    "Unable to load knowledge document details",
+  );
+}
+
+export async function reindexKnowledgeDocument(
+  documentId: string,
+): Promise<KnowledgeDocument> {
+  return requestJson<KnowledgeDocument>(
+    `/api/knowledge/documents/${encodeURIComponent(documentId)}/reindex`,
+    {
+      method: "POST",
+    },
+    "Unable to re-index knowledge document",
+  );
+}
+
+export async function deleteKnowledgeDocument(
+  documentId: string,
+): Promise<void> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/knowledge/documents/${encodeURIComponent(documentId)}`,
+    {
+      method: "DELETE",
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await getErrorMessage(response, "Unable to delete knowledge document"),
+    );
+  }
+}
+
+export async function queryRAG(
+  data: RAGQueryRequest,
+): Promise<RAGResponse> {
+  return requestJson<RAGResponse>(
+    "/api/rag/query",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    },
+    "Unable to query the knowledge base",
   );
 }

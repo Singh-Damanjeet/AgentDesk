@@ -8,6 +8,7 @@ import app.models  # noqa: F401
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
+from app.models.knowledge_document import KnowledgeDocument
 from app.models.ticket import Ticket
 from app.services.dashboard_service import DashboardService, DashboardServiceError
 
@@ -99,6 +100,13 @@ def test_dashboard_overview_reports_configured_ai_and_open_ticket_count():
                     [
                         Ticket(channel="email", status="open"),
                         Ticket(channel="web", status="closed"),
+                        KnowledgeDocument(
+                            filename="faq.txt",
+                            original_filename="faq.txt",
+                            file_type="txt",
+                            file_size=10,
+                            status="ready",
+                        ),
                     ]
                 )
                 db.commit()
@@ -116,7 +124,7 @@ def test_dashboard_overview_reports_configured_ai_and_open_ticket_count():
         assert payload["tickets"] == {"open_count": 1}
         assert "synthetic-gemini-key" not in response.text
         assert "encrypted_api_key" not in response.text
-        assert payload["knowledge"]["document_count"] >= 0
+        assert payload["knowledge"] == {"document_count": 1}
         assert payload["tickets"]["open_count"] >= 0
     finally:
         close_dashboard_client(engine, previous_override)

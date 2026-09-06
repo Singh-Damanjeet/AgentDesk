@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.ai_providers import is_supported_ai_configuration
 from app.models.ai_provider import AIProvider
+from app.models.knowledge_document import KnowledgeDocument
 from app.models.ticket import Ticket
 from app.schemas.dashboard import (
     DashboardAIProviderStatus,
@@ -33,6 +34,9 @@ class DashboardService:
                     Ticket.status == DashboardService.OPEN_TICKET_STATUS
                 )
             )
+            knowledge_document_count = db.scalar(
+                select(func.count(KnowledgeDocument.id))
+            )
         except SQLAlchemyError as exc:
             db.rollback()
             raise DashboardServiceError(
@@ -45,9 +49,9 @@ class DashboardService:
                 type="sqlite",
                 status="ready",
             ),
-            # Knowledge documents are intentionally zero until the knowledge
-            # ingestion model and workflow are introduced in a later phase.
-            knowledge=DashboardKnowledgeStatus(document_count=0),
+            knowledge=DashboardKnowledgeStatus(
+                document_count=max(knowledge_document_count or 0, 0),
+            ),
             tickets=DashboardTicketStatus(
                 open_count=max(open_ticket_count or 0, 0),
             ),

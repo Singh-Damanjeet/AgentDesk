@@ -2,6 +2,7 @@ GEMINI_PROVIDER = "gemini"
 
 SUPPORTED_GEMINI_MODELS = frozenset(
     {
+        "gemini-3.6-flash",
         "gemini-2.5-flash",
         "gemini-2.5-pro",
     }

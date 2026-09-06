@@ -140,7 +140,7 @@ export default function DashboardPage() {
               <StatusCard
                 label="Knowledge Documents"
                 value={`${overview.knowledge.document_count}`}
-                description="Knowledge ingestion is not available yet."
+                description="Documents indexed for future retrieval."
                 tone="neutral"
               />
 
@@ -181,7 +181,7 @@ export default function DashboardPage() {
             <div className="mt-8">
               <EmptyState
                 title="Your support workspace is ready"
-                description="Inbox, knowledge workflows, website chat, and agent runs will become available as those phases are implemented."
+                description="Inbox, website chat, and agent runs will become available as those phases are implemented."
               />
             </div>
           </>

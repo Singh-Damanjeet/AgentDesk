@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Float, ForeignKey, String, Text
+from sqlalchemy import JSON, Float, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -32,6 +32,12 @@ class AgentStep(Base):
 
     output_summary: Mapped[str | None] = mapped_column(
         Text,
+        nullable=True,
+    )
+
+    step_metadata: Mapped[dict[str, object] | None] = mapped_column(
+        "metadata",
+        JSON,
         nullable=True,
     )
 

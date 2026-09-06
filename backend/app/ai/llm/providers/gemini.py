@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import time
 from collections.abc import Sequence
 from typing import Any, TypeVar
@@ -26,10 +27,18 @@ from app.core.ai_providers import (
 
 
 GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
-DEFAULT_TIMEOUT_SECONDS = 15.0
+DEFAULT_TIMEOUT_SECONDS = 60.0
 MAX_TIMEOUT_SECONDS = 120.0
 MAX_REQUEST_ATTEMPTS = 3
 RETRY_BACKOFF_SECONDS = 0.25
+CONNECTION_TEST_MAX_OUTPUT_TOKENS = 256
+REQUEST_ID_HEADERS = (
+    "x-request-id",
+    "x-goog-request-id",
+    "request-id",
+)
+
+logger = logging.getLogger(__name__)
 
 SchemaModel = TypeVar("SchemaModel", bound=BaseModel)
 
@@ -136,14 +145,16 @@ class GeminiLLMAdapter:
             ) from exc
 
     async def test_connection(self) -> None:
-        await self._request(
-            method="GET",
-            url=(
-                f"{GEMINI_API_BASE_URL}/models/"
-                f"{self._model}"
-            ),
-            json_payload=None,
+        await self.chat(
+            [
+                ChatMessage(
+                    role="user",
+                    content="Reply with exactly OK.",
+                )
+            ],
+            temperature=0.0,
             timeout_seconds=DEFAULT_TIMEOUT_SECONDS,
+            max_output_tokens=CONNECTION_TEST_MAX_OUTPUT_TOKENS,
         )
 
     async def _generate_content(
@@ -224,6 +235,14 @@ class GeminiLLMAdapter:
                         await self._sleep_before_retry(attempt)
                         continue
 
+                    logger.warning(
+                        "Gemini request timed out provider=%s model=%s "
+                        "timeout_seconds=%s attempt=%s",
+                        self.provider,
+                        self.model,
+                        timeout_seconds,
+                        attempt + 1,
+                    )
                     raise LLMTimeoutError(
                         "The AI provider did not respond in time."
                     ) from exc
@@ -232,10 +251,26 @@ class GeminiLLMAdapter:
                         await self._sleep_before_retry(attempt)
                         continue
 
+                    logger.warning(
+                        "Gemini request failed before response provider=%s "
+                        "model=%s error_type=%s attempt=%s",
+                        self.provider,
+                        self.model,
+                        type(exc).__name__,
+                        attempt + 1,
+                    )
                     raise LLMProviderError(
                         "The AI provider is temporarily unavailable."
                     ) from exc
                 except httpx.HTTPError as exc:
+                    logger.warning(
+                        "Gemini request failed provider=%s model=%s "
+                        "error_type=%s attempt=%s",
+                        self.provider,
+                        self.model,
+                        type(exc).__name__,
+                        attempt + 1,
+                    )
                     raise LLMProviderError(
                         "The AI provider is temporarily unavailable."
                     ) from exc
@@ -243,6 +278,7 @@ class GeminiLLMAdapter:
                 if 200 <= response.status_code < 300:
                     return response
 
+                self._log_provider_failure(response, attempt=attempt)
                 error = self._error_for_status(response.status_code)
                 is_transient = (
                     response.status_code == 429
@@ -258,6 +294,70 @@ class GeminiLLMAdapter:
         raise LLMProviderError(
             "The AI provider is temporarily unavailable."
         )
+
+    def _log_provider_failure(
+        self,
+        response: httpx.Response,
+        *,
+        attempt: int,
+    ) -> None:
+        google_error_code, google_error_status = (
+            self._safe_google_error_metadata(response)
+        )
+        request_id = self._response_request_id(response)
+
+        logger.warning(
+            "Gemini request failed provider=%s model=%s http_status=%s "
+            "google_error_status=%s google_error_code=%s request_id=%s "
+            "attempt=%s",
+            self.provider,
+            self.model,
+            response.status_code,
+            google_error_status,
+            google_error_code,
+            request_id,
+            attempt + 1,
+        )
+
+    @staticmethod
+    def _safe_google_error_metadata(
+        response: httpx.Response,
+    ) -> tuple[int | None, str | None]:
+        try:
+            payload = response.json()
+        except ValueError:
+            return None, None
+
+        if not isinstance(payload, dict):
+            return None, None
+
+        error = payload.get("error")
+        if not isinstance(error, dict):
+            return None, None
+
+        raw_code = error.get("code")
+        code = (
+            raw_code
+            if isinstance(raw_code, int) and not isinstance(raw_code, bool)
+            else None
+        )
+        raw_status = error.get("status")
+        status = (
+            raw_status.strip()[:64]
+            if isinstance(raw_status, str) and raw_status.strip()
+            else None
+        )
+
+        return code, status
+
+    @staticmethod
+    def _response_request_id(response: httpx.Response) -> str | None:
+        for header_name in REQUEST_ID_HEADERS:
+            value = response.headers.get(header_name)
+            if value:
+                return value[:128]
+
+        return None
 
     @staticmethod
     async def _sleep_before_retry(attempt: int) -> None:
@@ -452,6 +552,11 @@ class GeminiLLMAdapter:
 
     @staticmethod
     def _error_for_status(status_code: int) -> LLMError:
+        if status_code == 400:
+            return LLMInputError(
+                "Gemini rejected the request as invalid."
+            )
+
         if status_code in {401, 403}:
             return LLMAuthenticationError(
                 "Gemini API credentials are invalid or unauthorized."
@@ -459,21 +564,21 @@ class GeminiLLMAdapter:
 
         if status_code == 404:
             return LLMConfigurationError(
-                "The configured Gemini model is unavailable."
+                "The configured Gemini model or endpoint was not found."
             )
 
         if status_code == 429:
             return LLMRateLimitError(
-                "The AI provider is temporarily rate limited."
+                "The Gemini API is rate limited or quota is exhausted."
             )
 
         if status_code >= 500:
             return LLMProviderError(
-                "The AI provider is temporarily unavailable."
+                "The Gemini API is temporarily unavailable."
             )
 
         return LLMProviderError(
-            "The AI provider rejected the request."
+            "The Gemini API rejected the request."
         )
 
     @staticmethod

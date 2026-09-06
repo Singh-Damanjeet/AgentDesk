@@ -32,6 +32,14 @@ class AIService:
         self._llm = llm
         self._embeddings = embeddings
 
+    @property
+    def provider(self) -> str:
+        return self._llm.provider
+
+    @property
+    def model(self) -> str:
+        return self._llm.model
+
     @classmethod
     def from_configuration(cls, db: Session) -> "AIService":
         provider = AIProviderService.get(db)

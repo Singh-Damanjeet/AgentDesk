@@ -14,6 +14,10 @@ const PROVIDER = "gemini";
 
 const MODEL_OPTIONS = [
   {
+    value: "gemini-3.6-flash",
+    label: "Gemini 3.6 Flash",
+  },
+  {
     value: "gemini-2.5-flash",
     label: "Gemini 2.5 Flash",
   },
