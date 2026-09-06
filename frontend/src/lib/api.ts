@@ -164,7 +164,7 @@ export async function getCompanySettings(): Promise<CompanySettings | null> {
     );
   }
 
-  return (await response.json()) as CompanySettings;
+  return (await response.json()) as CompanySettings | null;
 }
 
 export async function updateCompanySettings(
@@ -198,7 +198,7 @@ export async function getAISettings(): Promise<AIProviderSettings | null> {
     );
   }
 
-  return (await response.json()) as AIProviderSettings;
+  return (await response.json()) as AIProviderSettings | null;
 }
 
 export async function testAIConnection(

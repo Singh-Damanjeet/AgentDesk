@@ -27,7 +27,7 @@ router = APIRouter(
 
 @router.get(
     "/company",
-    response_model=CompanyResponse,
+    response_model=CompanyResponse | None,
 )
 def get_company_settings(
     db: Session = Depends(get_db),
@@ -35,10 +35,7 @@ def get_company_settings(
     company = CompanyService.get(db)
 
     if company is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Company configuration not found.",
-        )
+        return None
 
     return company
 
@@ -59,7 +56,7 @@ def update_company_settings(
 
 @router.get(
     "/ai",
-    response_model=AIProviderResponse,
+    response_model=AIProviderResponse | None,
 )
 def get_ai_settings(
     db: Session = Depends(get_db),
@@ -67,10 +64,7 @@ def get_ai_settings(
     provider = AIProviderService.get(db)
 
     if provider is None:
-        raise HTTPException(
-            status_code=404,
-            detail="AI provider configuration not found.",
-        )
+        return None
 
     return AIProviderService.to_response(provider)
 

@@ -9,6 +9,7 @@ from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
 from app.models.ticket import Ticket
+from app.services.dashboard_service import DashboardService, DashboardServiceError
 
 
 def create_dashboard_client():
@@ -46,8 +47,14 @@ def test_dashboard_overview_reports_real_unconfigured_state():
 
     try:
         with TestClient(app) as client:
+            company_response = client.get("/api/settings/company")
+            ai_response = client.get("/api/settings/ai")
             response = client.get("/api/dashboard/overview")
 
+        assert company_response.status_code == 200
+        assert company_response.json() is None
+        assert ai_response.status_code == 200
+        assert ai_response.json() is None
         assert response.status_code == 200
         payload = response.json()
 
@@ -111,5 +118,33 @@ def test_dashboard_overview_reports_configured_ai_and_open_ticket_count():
         assert "encrypted_api_key" not in response.text
         assert payload["knowledge"]["document_count"] >= 0
         assert payload["tickets"]["open_count"] >= 0
+    finally:
+        close_dashboard_client(engine, previous_override)
+
+
+def test_dashboard_overview_returns_safe_error_when_data_is_unavailable(
+    monkeypatch,
+):
+    engine, previous_override = create_dashboard_client()
+
+    def fail_overview(_db):
+        raise DashboardServiceError(
+            "Dashboard data is currently unavailable."
+        )
+
+    monkeypatch.setattr(
+        DashboardService,
+        "get_overview",
+        fail_overview,
+    )
+
+    try:
+        with TestClient(app) as client:
+            response = client.get("/api/dashboard/overview")
+
+        assert response.status_code == 503
+        assert response.json() == {
+            "detail": "Dashboard data is currently unavailable."
+        }
     finally:
         close_dashboard_client(engine, previous_override)

@@ -315,6 +315,7 @@ export default function SettingsPage() {
                 id="settings-company-name"
                 required
                 value={company.name}
+                autoComplete="organization"
                 onChange={(event) =>
                   setCompany((current) => ({
                     ...current,
@@ -334,6 +335,7 @@ export default function SettingsPage() {
                 id="settings-company-website"
                 type="url"
                 value={company.website}
+                autoComplete="url"
                 onChange={(event) =>
                   setCompany((current) => ({
                     ...current,
@@ -353,6 +355,7 @@ export default function SettingsPage() {
               <input
                 id="settings-company-industry"
                 value={company.industry}
+                autoComplete="off"
                 onChange={(event) =>
                   setCompany((current) => ({
                     ...current,
@@ -371,6 +374,7 @@ export default function SettingsPage() {
               <input
                 id="settings-support-name"
                 value={company.supportName}
+                autoComplete="organization"
                 onChange={(event) =>
                   setCompany((current) => ({
                     ...current,
@@ -390,6 +394,7 @@ export default function SettingsPage() {
                 <input
                   id="settings-language"
                   value={company.defaultLanguage}
+                  autoComplete="off"
                   onChange={(event) =>
                     setCompany((current) => ({
                       ...current,
@@ -408,6 +413,7 @@ export default function SettingsPage() {
                 <input
                   id="settings-timezone"
                   value={company.timezone}
+                  autoComplete="off"
                   onChange={(event) =>
                     setCompany((current) => ({
                       ...current,
@@ -463,6 +469,7 @@ export default function SettingsPage() {
               <input
                 id="settings-provider"
                 value="Google Gemini"
+                autoComplete="off"
                 readOnly
                 className={`${inputClassName} text-zinc-400`}
               />
