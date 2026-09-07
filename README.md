@@ -4,8 +4,6 @@ AgentDesk is a local-first customer support workspace for grounded AI
 assistance. It combines a setup wizard, admin dashboard, knowledge base,
 persistent tickets, an embeddable website widget, and inspectable agent traces.
 
-![Welcome to AgentDesk](docs/images/setup-wizard.png)
-
 ## Architecture
 
 ```mermaid
