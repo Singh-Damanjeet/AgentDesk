@@ -1,0 +1,10 @@
+AcmeFlow support hours
+
+Self-service documentation and the AcmeFlow support assistant are available at
+all times. Human support is staffed Monday through Friday, 09:00 to 17:00 UTC,
+excluding published AcmeFlow holidays.
+
+Urgent security reports should be submitted through the verified support
+channel even outside staffed hours. The team reviews them in the next staffed
+window. Account-specific status questions are not answered by guessing; they
+are routed for human review.

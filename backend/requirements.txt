@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+pydantic
+httpx
+
+sqlalchemy
+alembic
+cryptography
+sentence-transformers
+pypdf
+python-docx
+python-multipart
+langgraph
+
+pytest

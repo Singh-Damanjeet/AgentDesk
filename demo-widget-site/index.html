@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="A small AcmeFlow website with the AgentDesk support widget installed."
+    />
+    <title>AcmeFlow | Work moves clearly</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="./index.html" aria-label="AcmeFlow home">
+        <span class="brand-mark" aria-hidden="true">A</span>
+        <span>AcmeFlow</span>
+      </a>
+      <nav aria-label="Primary navigation">
+        <a href="#product">Product</a>
+        <a href="#customers">Customers</a>
+        <a href="#support">Support</a>
+      </nav>
+      <a class="header-button" href="#support">Talk to support</a>
+    </header>
+
+    <main>
+      <section class="hero" id="product">
+        <div class="hero-copy">
+          <p class="eyebrow">Customer operations, made calm</p>
+          <h1>Keep every customer conversation moving.</h1>
+          <p class="hero-summary">
+            AcmeFlow brings requests, knowledge, and follow-up into one clear
+            workspace for modern support teams.
+          </p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#support">Explore support</a>
+            <a class="text-link" href="#customers">See how teams use AcmeFlow <span aria-hidden="true">→</span></a>
+          </div>
+          <dl class="hero-stats" aria-label="AcmeFlow highlights">
+            <div>
+              <dt>24/7</dt>
+              <dd>Self-service coverage</dd>
+            </div>
+            <div>
+              <dt>30 days</dt>
+              <dd>Refund request window</dd>
+            </div>
+            <div>
+              <dt>1 place</dt>
+              <dd>For every conversation</dd>
+            </div>
+          </dl>
+        </div>
+        <div class="hero-panel" aria-label="Support workspace preview">
+          <div class="panel-topline">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span>Support workspace</span>
+            <span class="panel-date">Today</span>
+          </div>
+          <div class="conversation-card">
+            <div class="conversation-avatar">JL</div>
+            <div>
+              <p class="conversation-name">Jordan Lee</p>
+              <p class="conversation-message">Can I update my plan before renewal?</p>
+            </div>
+            <span class="conversation-time">9:42</span>
+          </div>
+          <div class="workspace-line">
+            <span class="line-label">Knowledge used</span>
+            <span class="line-value">Renewal policy</span>
+          </div>
+          <div class="workspace-line">
+            <span class="line-label">Next step</span>
+            <span class="line-value accent">Answer with source</span>
+          </div>
+          <div class="mini-chart" aria-hidden="true">
+            <span style="height: 42%"></span>
+            <span style="height: 58%"></span>
+            <span style="height: 48%"></span>
+            <span style="height: 74%"></span>
+            <span style="height: 68%"></span>
+            <span style="height: 88%"></span>
+            <span style="height: 80%"></span>
+          </div>
+          <p class="chart-caption">Resolution quality this week <strong>+18%</strong></p>
+        </div>
+      </section>
+
+      <section class="feature-section" id="customers">
+        <div class="section-heading">
+          <p class="eyebrow">A better support rhythm</p>
+          <h2>Clarity at every handoff.</h2>
+          <p>
+            Give customers useful answers quickly, while keeping your team in
+            the loop when a person needs to step in.
+          </p>
+        </div>
+        <div class="feature-grid">
+          <article class="feature-card">
+            <span class="feature-number">01</span>
+            <h3>Grounded answers</h3>
+            <p>Responses stay close to the policies and product guidance your team trusts.</p>
+          </article>
+          <article class="feature-card">
+            <span class="feature-number">02</span>
+            <h3>Visible context</h3>
+            <p>Every conversation and source remains available to the people handling support.</p>
+          </article>
+          <article class="feature-card">
+            <span class="feature-number">03</span>
+            <h3>Human when needed</h3>
+            <p>Account-specific questions are routed safely instead of being guessed at.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="support-section" id="support">
+        <div>
+          <p class="eyebrow">Need a hand?</p>
+          <h2>Ask the support team.</h2>
+          <p>
+            The chat button in the lower corner is the live AgentDesk widget.
+            Try a policy question, then refresh the page to see anonymous
+            conversation history persist.
+          </p>
+        </div>
+        <div class="support-note">
+          <span class="support-note-icon" aria-hidden="true">↗</span>
+          <p><strong>Tip</strong> Try “How long do I have to request a refund?”</p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <span>AcmeFlow</span>
+      <span>Support that stays in context.</span>
+    </footer>
+
+    <script
+      src="http://127.0.0.1:8000/widget.js"
+      data-project="local-default"
+    ></script>
+  </body>
+</html>
