@@ -27,6 +27,10 @@ from app.schemas.tickets import (
     TicketDetailResponse,
     TicketMessageResponse,
 )
+from app.services.agent_workflow_service import (
+    AgentWorkflowError,
+    AgentWorkflowService,
+)
 from app.services.ticket_service import (
     TicketConflictError,
     TicketNotFoundError,
@@ -58,8 +62,21 @@ class ConversationGenerationError(ConversationServiceError):
 class ConversationService:
     """Persist channel-independent conversations and their RAG responses."""
 
-    def __init__(self, *, rag_service: RAGService | None = None):
+    def __init__(
+        self,
+        *,
+        rag_service: RAGService | None = None,
+        agent_workflow_service: AgentWorkflowService | None = None,
+    ):
         self.rag_service = rag_service or RAGService()
+        self.agent_workflow_service = agent_workflow_service
+        if self.agent_workflow_service is not None:
+            self.agent_workflow_service.bind_persistence(self)
+        elif self._supports_workflow(self.rag_service):
+            self.agent_workflow_service = AgentWorkflowService(
+                rag_service=self.rag_service,
+                persistence=self,
+            )
 
     def create_or_reuse_ticket(
         self,
@@ -174,6 +191,31 @@ class ConversationService:
             TicketStatus.AI_PROCESSING,
         )
 
+        if self.agent_workflow_service is not None:
+            try:
+                await self.agent_workflow_service.run(
+                    db,
+                    ticket_id=ticket.id,
+                    session_id=ticket.session_id,
+                    user_message=normalized_content,
+                )
+            except AgentWorkflowError as exc:
+                self._mark_human_review(db, ticket.id)
+                raise ConversationGenerationError(
+                    exc.user_message
+                ) from exc
+            except Exception as exc:
+                self._mark_human_review(db, ticket.id)
+                logger.exception(
+                    "Conversation workflow failed ticket_id=%s",
+                    ticket.id,
+                )
+                raise ConversationGenerationError(
+                    "The conversation response could not be generated."
+                ) from exc
+
+            return self.get_ticket_detail(db, ticket.id)
+
         try:
             response = await self.rag_service.answer(
                 db,
@@ -217,6 +259,36 @@ class ConversationService:
             ) from exc
 
         return self.get_ticket_detail(db, ticket.id)
+
+    def persist_workflow_response(
+        self,
+        db: Session,
+        *,
+        ticket_id: str,
+        answer: str,
+        insufficient_evidence: bool,
+        requires_human_review: bool,
+    ) -> None:
+        """Persist the single AI response produced by the agent graph."""
+        target_status = (
+            TicketStatus.HUMAN_REVIEW
+            if insufficient_evidence or requires_human_review
+            else TicketStatus.WAITING_CUSTOMER
+        )
+
+        try:
+            self._append_message(
+                db,
+                ticket=TicketService.get(db, ticket_id),
+                sender_type=MessageSenderType.AI,
+                content=answer,
+            )
+            TicketService.update_status(db, ticket_id, target_status)
+        except (TicketServiceError, ConversationServiceError) as exc:
+            self._mark_human_review(db, ticket_id)
+            raise ConversationGenerationError(
+                "The AI response could not be saved safely."
+            ) from exc
 
     def append_ai_message(
         self,
@@ -400,6 +472,14 @@ class ConversationService:
         for step in steps:
             steps_by_run[step.agent_run_id].append(step)
 
+        for run_steps in steps_by_run.values():
+            run_steps.sort(
+                key=lambda step: (
+                    step.sequence_number,
+                    step.id,
+                )
+            )
+
         return [
             self._trace_response(run, steps_by_run.get(run.id, []))
             for run in runs
@@ -411,7 +491,11 @@ class ConversationService:
         steps: list[AgentStep],
     ) -> AgentTraceSummary:
         retrieval = next(
-            (step for step in steps if step.step_type == "retrieval"),
+            (
+                step
+                for step in steps
+                if step.step_type in {"retrieval", "retrieve_knowledge"}
+            ),
             None,
         )
         retrieval_summary = None
@@ -430,10 +514,22 @@ class ConversationService:
                     else None
                 ),
                 candidate_count=(
-                    len(candidates) if isinstance(candidates, list) else 0
+                    len(candidates)
+                    if isinstance(candidates, list)
+                    else (
+                        int(metadata.get("candidate_count", 0))
+                        if isinstance(metadata.get("candidate_count"), int)
+                        else 0
+                    )
                 ),
                 selected_count=(
-                    len(selected) if isinstance(selected, list) else 0
+                    len(selected)
+                    if isinstance(selected, list)
+                    else (
+                        int(metadata.get("selected_count", 0))
+                        if isinstance(metadata.get("selected_count"), int)
+                        else 0
+                    )
                 ),
             )
 
@@ -498,3 +594,9 @@ class ConversationService:
             )
 
         return normalized
+
+    @staticmethod
+    def _supports_workflow(rag_service: object) -> bool:
+        return callable(getattr(rag_service, "retrieve", None)) and callable(
+            getattr(rag_service, "generate_from_context", None)
+        )

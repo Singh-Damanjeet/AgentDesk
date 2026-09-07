@@ -306,6 +306,41 @@ class TicketService:
         return ticket
 
     @staticmethod
+    def update_classification(
+        db: Session,
+        ticket_id: str,
+        *,
+        category: str,
+        urgency: str,
+    ) -> Ticket:
+        """Persist the workflow's bounded classification metadata."""
+        ticket = TicketService.get(db, ticket_id)
+        normalized_category = TicketService._normalize_optional_text(
+            category,
+            100,
+        )
+        if normalized_category is None:
+            raise TicketValidationError(
+                "Ticket category cannot be empty."
+            )
+
+        priority = TicketService._normalize_priority(urgency)
+        ticket.category = normalized_category
+        ticket.priority = priority.value
+        ticket.updated_at = datetime.now(timezone.utc)
+
+        try:
+            db.commit()
+            db.refresh(ticket)
+        except SQLAlchemyError as exc:
+            db.rollback()
+            raise TicketServiceError(
+                "The ticket classification could not be saved."
+            ) from exc
+
+        return ticket
+
+    @staticmethod
     def reopen(db: Session, ticket_id: str) -> Ticket:
         return TicketService.update_status(
             db,

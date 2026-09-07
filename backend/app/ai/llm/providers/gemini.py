@@ -37,6 +37,31 @@ REQUEST_ID_HEADERS = (
     "x-goog-request-id",
     "request-id",
 )
+SUPPORTED_JSON_SCHEMA_KEYS = frozenset(
+    {
+        "$id",
+        "$defs",
+        "$ref",
+        "$anchor",
+        "type",
+        "format",
+        "title",
+        "description",
+        "enum",
+        "items",
+        "prefixItems",
+        "minItems",
+        "maxItems",
+        "minimum",
+        "maximum",
+        "anyOf",
+        "oneOf",
+        "properties",
+        "additionalProperties",
+        "required",
+        "propertyOrdering",
+    }
+)
 
 logger = logging.getLogger(__name__)
 
@@ -106,8 +131,15 @@ class GeminiLLMAdapter:
             )
 
         try:
-            schema_json = json.dumps(
-                schema.model_json_schema(),
+            raw_schema_definition = schema.model_json_schema()
+            schema_definition = self._sanitize_json_schema(
+                raw_schema_definition
+            )
+            if not isinstance(schema_definition, dict):
+                raise TypeError("The Pydantic schema was not an object.")
+
+            json.dumps(
+                schema_definition,
                 ensure_ascii=False,
                 sort_keys=True,
             )
@@ -121,9 +153,8 @@ class GeminiLLMAdapter:
             ChatMessage(
                 role="user",
                 content=(
-                    "Return exactly one JSON object and no markdown. "
-                    "The JSON must conform to this schema: "
-                    f"{schema_json}"
+                    "Return only the requested structured object. Do not add "
+                    "markdown or explanatory text."
                 ),
             ),
         ]
@@ -134,6 +165,7 @@ class GeminiLLMAdapter:
             timeout_seconds=timeout_seconds,
             max_output_tokens=max_output_tokens,
             response_mime_type="application/json",
+            response_json_schema=schema_definition,
         )
 
         try:
@@ -141,7 +173,9 @@ class GeminiLLMAdapter:
             return schema.model_validate(parsed)
         except (json.JSONDecodeError, TypeError, ValueError, ValidationError) as exc:
             raise LLMStructuredOutputError(
-                "The AI provider returned data that did not match the requested schema."
+                "The AI provider returned data that did not match the requested "
+                "schema.",
+                diagnostics=self._structured_output_diagnostics(exc),
             ) from exc
 
     async def test_connection(self) -> None:
@@ -165,6 +199,7 @@ class GeminiLLMAdapter:
         timeout_seconds: float | None,
         max_output_tokens: int | None,
         response_mime_type: str | None = None,
+        response_json_schema: dict[str, Any] | None = None,
     ) -> LLMResponse:
         self._validate_generation_options(
             temperature=temperature,
@@ -177,6 +212,7 @@ class GeminiLLMAdapter:
             temperature=temperature,
             max_output_tokens=max_output_tokens,
             response_mime_type=response_mime_type,
+            response_json_schema=response_json_schema,
         )
         started_at = time.perf_counter()
 
@@ -244,7 +280,10 @@ class GeminiLLMAdapter:
                         attempt + 1,
                     )
                     raise LLMTimeoutError(
-                        "The AI provider did not respond in time."
+                        "The AI provider did not respond in time.",
+                        diagnostics={
+                            "transport_error_type": type(exc).__name__,
+                        },
                     ) from exc
                 except httpx.RequestError as exc:
                     if attempt < MAX_REQUEST_ATTEMPTS - 1:
@@ -260,7 +299,10 @@ class GeminiLLMAdapter:
                         attempt + 1,
                     )
                     raise LLMProviderError(
-                        "The AI provider is temporarily unavailable."
+                        "The AI provider is temporarily unavailable.",
+                        diagnostics={
+                            "transport_error_type": type(exc).__name__,
+                        },
                     ) from exc
                 except httpx.HTTPError as exc:
                     logger.warning(
@@ -272,7 +314,10 @@ class GeminiLLMAdapter:
                         attempt + 1,
                     )
                     raise LLMProviderError(
-                        "The AI provider is temporarily unavailable."
+                        "The AI provider is temporarily unavailable.",
+                        diagnostics={
+                            "transport_error_type": type(exc).__name__,
+                        },
                     ) from exc
 
                 if 200 <= response.status_code < 300:
@@ -280,6 +325,9 @@ class GeminiLLMAdapter:
 
                 self._log_provider_failure(response, attempt=attempt)
                 error = self._error_for_status(response.status_code)
+                error.diagnostics.update(
+                    self._safe_provider_diagnostics(response)
+                )
                 is_transient = (
                     response.status_code == 429
                     or response.status_code >= 500
@@ -318,6 +366,20 @@ class GeminiLLMAdapter:
             request_id,
             attempt + 1,
         )
+
+    def _safe_provider_diagnostics(
+        self,
+        response: httpx.Response,
+    ) -> dict[str, object]:
+        google_error_code, google_error_status = (
+            self._safe_google_error_metadata(response)
+        )
+        return {
+            "http_status": response.status_code,
+            "google_error_status": google_error_status,
+            "google_error_code": google_error_code,
+            "request_id": self._response_request_id(response),
+        }
 
     @staticmethod
     def _safe_google_error_metadata(
@@ -418,6 +480,7 @@ class GeminiLLMAdapter:
         temperature: float | None,
         max_output_tokens: int | None,
         response_mime_type: str | None,
+        response_json_schema: dict[str, Any] | None,
     ) -> dict[str, Any]:
         system_messages = [
             message.content
@@ -453,10 +516,78 @@ class GeminiLLMAdapter:
         if response_mime_type is not None:
             generation_config["responseMimeType"] = response_mime_type
 
+        if response_json_schema is not None:
+            generation_config["responseJsonSchema"] = response_json_schema
+
         if generation_config:
             payload["generationConfig"] = generation_config
 
         return payload
+
+    @classmethod
+    def _sanitize_json_schema(cls, value: object) -> object:
+        if isinstance(value, dict):
+            sanitized: dict[str, object] = {}
+            for key, item in value.items():
+                if key not in SUPPORTED_JSON_SCHEMA_KEYS:
+                    continue
+
+                if key in {"properties", "$defs"}:
+                    if not isinstance(item, dict):
+                        continue
+                    sanitized[key] = {
+                        property_name: cls._sanitize_json_schema(
+                            property_schema
+                        )
+                        for property_name, property_schema in item.items()
+                        if isinstance(property_name, str)
+                    }
+                    continue
+
+                sanitized[key] = cls._sanitize_json_schema(item)
+
+            return sanitized
+
+        if isinstance(value, list):
+            return [cls._sanitize_json_schema(item) for item in value]
+
+        return value
+
+    @staticmethod
+    def _structured_output_diagnostics(
+        error: Exception,
+    ) -> dict[str, object]:
+        if isinstance(error, json.JSONDecodeError):
+            return {
+                "structured_output_failure": "invalid_json",
+                "json_error_type": error.msg[:128],
+            }
+
+        if isinstance(error, ValidationError):
+            fields = sorted(
+                {
+                    str(location)
+                    for validation_error in error.errors()
+                    for location in validation_error.get("loc", ())
+                }
+            )
+            error_types = sorted(
+                {
+                    str(validation_error.get("type"))
+                    for validation_error in error.errors()
+                    if validation_error.get("type") is not None
+                }
+            )
+            return {
+                "structured_output_failure": "schema_validation",
+                "validation_fields": fields,
+                "validation_error_types": error_types,
+            }
+
+        return {
+            "structured_output_failure": "invalid_structured_response",
+            "cause_type": type(error).__name__,
+        }
 
     @staticmethod
     def _parse_response_payload(response: httpx.Response) -> dict[str, Any]:

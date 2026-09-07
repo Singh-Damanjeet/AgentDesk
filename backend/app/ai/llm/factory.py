@@ -14,7 +14,6 @@ class LLMFactory:
         api_key: str,
     ) -> LLMService:
         normalized_provider = provider.strip().lower()
-        normalized_model = model.removeprefix("models/").strip()
 
         if normalized_provider != GEMINI_PROVIDER:
             raise LLMConfigurationError(
@@ -28,5 +27,5 @@ class LLMFactory:
 
         return GeminiLLMAdapter(
             api_key=api_key,
-            model=normalized_model,
+            model=model,
         )

@@ -313,6 +313,12 @@ export default function TicketDetailPage() {
                         {run.error}
                       </p>
                     ) : null}
+                    <Link
+                      href={`/dashboard/agent-runs/${encodeURIComponent(run.trace_id)}`}
+                      className="mt-4 inline-block text-xs font-medium text-zinc-400 underline decoration-zinc-700 underline-offset-4 hover:text-zinc-200"
+                    >
+                      View full run
+                    </Link>
                   </article>
                 ))}
               </div>

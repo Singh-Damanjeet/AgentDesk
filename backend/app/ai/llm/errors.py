@@ -1,8 +1,17 @@
+from collections.abc import Mapping
+
+
 class LLMError(Exception):
     """Base class for safe, provider-independent LLM errors."""
 
-    def __init__(self, message: str):
+    def __init__(
+        self,
+        message: str,
+        *,
+        diagnostics: Mapping[str, object] | None = None,
+    ):
         self.user_message = message
+        self.diagnostics = dict(diagnostics or {})
         super().__init__(message)
 
 

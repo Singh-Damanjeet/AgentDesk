@@ -2,7 +2,7 @@ import asyncio
 
 import httpx
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -31,6 +31,7 @@ from app.ai.llm.types import ChatMessage
 from app.core.secrets import encrypt_secret
 from app.db.base import Base
 from app.models.ai_provider import AIProvider
+from app.schemas.agent import ClassificationResult as AgentClassificationResult
 from app.services.ai_service import AIService
 
 
@@ -299,7 +300,16 @@ def test_gemini_rate_limit_is_retried_then_mapped(monkeypatch):
 def test_gemini_invalid_request_is_not_retried(monkeypatch):
     calls = patch_http_client(
         monkeypatch,
-        post_handler=lambda _attempt: FakeResponse(400, {}),
+        post_handler=lambda _attempt: FakeResponse(
+            400,
+            {
+                "error": {
+                    "code": 400,
+                    "status": "INVALID_ARGUMENT",
+                    "message": "Invalid structured response schema.",
+                }
+            },
+        ),
     )
     adapter = GeminiLLMAdapter(
         api_key="synthetic-gemini-key",
@@ -315,6 +325,12 @@ def test_gemini_invalid_request_is_not_retried(monkeypatch):
 
     assert len(calls["post"]) == 1
     assert error.value.user_message == "Gemini rejected the request as invalid."
+    assert error.value.diagnostics == {
+        "http_status": 400,
+        "google_error_status": "INVALID_ARGUMENT",
+        "google_error_code": 400,
+        "request_id": None,
+    }
 
 
 def test_gemini_not_found_preserves_safe_provider_diagnostics(
@@ -352,6 +368,12 @@ def test_gemini_not_found_preserves_safe_provider_diagnostics(
     assert error.value.user_message == (
         "The configured Gemini model or endpoint was not found."
     )
+    assert error.value.diagnostics == {
+        "http_status": 404,
+        "google_error_status": "NOT_FOUND",
+        "google_error_code": 404,
+        "request_id": "synthetic-request-id",
+    }
     assert "provider=gemini" in caplog.text
     assert "model=gemini-2.5-flash" in caplog.text
     assert "http_status=404" in caplog.text
@@ -364,11 +386,12 @@ def test_gemini_not_found_preserves_safe_provider_diagnostics(
 def test_llm_factory_resolves_gemini_and_rejects_unsupported_provider():
     adapter = LLMFactory.create(
         provider="gemini",
-        model="gemini-2.5-flash",
+        model="models/gemini-2.5-flash",
         api_key="synthetic-gemini-key",
     )
 
     assert isinstance(adapter, GeminiLLMAdapter)
+    assert adapter.model == "gemini-2.5-flash"
 
     with pytest.raises(LLMConfigurationError) as error:
         LLMFactory.create(
@@ -413,9 +436,114 @@ def test_structured_output_validates_and_returns_typed_model(monkeypatch):
     assert isinstance(result, ClassificationResult)
     assert result.category == "billing"
     assert result.confidence == 0.92
-    assert calls["post"][0]["json"]["generationConfig"] == {
-        "responseMimeType": "application/json",
-    }
+    generation_config = calls["post"][0]["json"]["generationConfig"]
+    assert generation_config["responseMimeType"] == "application/json"
+    assert "responseSchema" not in generation_config
+    assert generation_config["responseJsonSchema"] == (
+        ClassificationResult.model_json_schema()
+    )
+
+
+def test_structured_output_sends_production_classifier_schema(monkeypatch):
+    calls = patch_http_client(
+        monkeypatch,
+        post_handler=lambda _attempt: FakeResponse(
+            200,
+            successful_gemini_payload(
+                '{"category":"refund","urgency":"normal",'
+                '"needs_account_data":true,"confidence":0.98}'
+            ),
+        ),
+    )
+    adapter = GeminiLLMAdapter(
+        api_key="synthetic-gemini-key",
+        model="gemini-3.6-flash",
+    )
+
+    result = run(
+        adapter.structured_output(
+            [ChatMessage(role="user", content="Classify this request.")],
+            AgentClassificationResult,
+        )
+    )
+
+    assert result.category == "refund"
+    assert result.needs_account_data is True
+    generation_config = calls["post"][0]["json"]["generationConfig"]
+    schema = generation_config["responseJsonSchema"]
+    assert generation_config["responseMimeType"] == "application/json"
+    assert "responseSchema" not in generation_config
+    assert schema["type"] == "object"
+    assert schema["required"] == [
+        "category",
+        "urgency",
+        "needs_account_data",
+        "confidence",
+    ]
+    assert schema["properties"]["category"]["enum"] == [
+        "billing",
+        "refund",
+        "account",
+        "technical",
+        "shipping",
+        "general",
+        "other",
+    ]
+    assert schema["properties"]["urgency"]["enum"] == [
+        "low",
+        "normal",
+        "high",
+        "urgent",
+    ]
+    assert schema["properties"]["confidence"]["minimum"] == 0.0
+    assert schema["properties"]["confidence"]["maximum"] == 1.0
+
+
+def test_structured_output_sanitizes_unsupported_json_schema_keywords(
+    monkeypatch,
+):
+    class SchemaWithUnsupportedKeywords(BaseModel):
+        model_config = {
+            "json_schema_extra": {
+                "examples": ["remove this"],
+                "x-provider-only": "remove this",
+            }
+        }
+
+        value: str = Field(
+            json_schema_extra={
+                "default": "remove this",
+                "x-field-only": "remove this",
+            }
+        )
+
+    calls = patch_http_client(
+        monkeypatch,
+        post_handler=lambda _attempt: FakeResponse(
+            200,
+            successful_gemini_payload('{"value":"kept"}'),
+        ),
+    )
+    adapter = GeminiLLMAdapter(
+        api_key="synthetic-gemini-key",
+        model="gemini-2.5-flash",
+    )
+
+    result = run(
+        adapter.structured_output(
+            [ChatMessage(role="user", content="Return a value.")],
+            SchemaWithUnsupportedKeywords,
+        )
+    )
+
+    assert result.value == "kept"
+    generation_config = calls["post"][0]["json"]["generationConfig"]
+    schema = generation_config["responseJsonSchema"]
+    assert "responseSchema" not in generation_config
+    assert "examples" not in schema
+    assert "x-provider-only" not in schema
+    assert "default" not in schema["properties"]["value"]
+    assert "x-field-only" not in schema["properties"]["value"]
 
 
 def test_structured_output_rejects_invalid_schema_result(monkeypatch):
@@ -440,6 +568,15 @@ def test_structured_output_rejects_invalid_schema_result(monkeypatch):
         )
 
     assert "synthetic-gemini-key" not in str(error.value)
+    assert error.value.diagnostics == {
+        "structured_output_failure": "schema_validation",
+        "validation_fields": [
+            "confidence",
+            "needs_account_data",
+            "urgency",
+        ],
+        "validation_error_types": ["missing"],
+    }
 
 
 class FakeEmbeddingModel:

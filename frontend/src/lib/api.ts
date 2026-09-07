@@ -207,6 +207,41 @@ export type AgentTraceSummary = {
   retrieval: AgentTraceRetrievalSummary | null;
 };
 
+export type AgentRunSummary = {
+  id: string;
+  trace_id: string;
+  ticket_id: string | null;
+  status: string;
+  provider: string | null;
+  model: string | null;
+  started_at: string;
+  finished_at: string | null;
+  latency_ms: number | null;
+  error: string | null;
+  step_count: number;
+};
+
+export type AgentStep = {
+  id: string;
+  sequence_number: number;
+  step_type: string;
+  input_summary: string | null;
+  output_summary: string | null;
+  metadata: Record<string, unknown> | null;
+  duration_ms: number | null;
+};
+
+export type AgentRunDetail = AgentRunSummary & {
+  steps: AgentStep[];
+};
+
+export type AgentRunListResponse = {
+  items: AgentRunSummary[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
 export type TicketSummary = {
   id: string;
   session_id: string;
@@ -565,6 +600,42 @@ export async function listTickets(options: {
       cache: "no-store",
     },
     "Unable to load tickets",
+  );
+}
+
+export async function listAgentRuns(options: {
+  limit?: number;
+  offset?: number;
+} = {}): Promise<AgentRunListResponse> {
+  const params = new URLSearchParams();
+
+  if (options.limit !== undefined) {
+    params.set("limit", String(options.limit));
+  }
+
+  if (options.offset !== undefined) {
+    params.set("offset", String(options.offset));
+  }
+
+  const query = params.toString();
+  return requestJson<AgentRunListResponse>(
+    `/api/agent-runs${query ? `?${query}` : ""}`,
+    {
+      cache: "no-store",
+    },
+    "Unable to load agent runs",
+  );
+}
+
+export async function getAgentRun(
+  identifier: string,
+): Promise<AgentRunDetail> {
+  return requestJson<AgentRunDetail>(
+    `/api/agent-runs/${encodeURIComponent(identifier)}`,
+    {
+      cache: "no-store",
+    },
+    "Unable to load agent run",
   );
 }
 

@@ -10,5 +10,6 @@ sentence-transformers
 pypdf
 python-docx
 python-multipart
+langgraph
 
 pytest

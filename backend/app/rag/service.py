@@ -1,5 +1,6 @@
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import datetime, timezone
+from dataclasses import dataclass
 import logging
 import time
 import uuid
@@ -9,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.embeddings.base import EmbeddingError, EmbeddingService
 from app.ai.llm.errors import LLMError
-from app.ai.llm.types import ChatMessage
+from app.ai.llm.types import ChatMessage, LLMResponse
 from app.knowledge.errors import KnowledgeProcessingError
 from app.knowledge.vector_store import (
     LocalVectorStore,
@@ -24,7 +25,7 @@ from app.rag.config import (
     MAX_QUESTION_LENGTH,
     RAGConfig,
 )
-from app.rag.context import assemble_context
+from app.rag.context import ContextAssembly, assemble_context
 from app.rag.errors import (
     RAGEmbeddingError,
     RAGError,
@@ -51,8 +52,29 @@ VectorStoreFactory = Callable[[Session], VectorStore]
 AIServiceFactory = Callable[[Session], AIService]
 
 
+@dataclass(frozen=True, slots=True)
+class RAGRetrievalResult:
+    """The bounded, provider-independent result of knowledge retrieval."""
+
+    question: str
+    candidates: tuple[RAGRetrievedChunk, ...]
+    context: ContextAssembly
+    embedding_latency_ms: int
+    retrieval_latency_ms: int
+    reason: str
+
+    @property
+    def insufficient_evidence(self) -> bool:
+        return not self.context.chunks
+
+
 class RAGService:
-    """Run one-shot grounded retrieval and answer generation."""
+    """Run grounded retrieval and answer generation.
+
+    Retrieval and generation are exposed separately for the V1.9 workflow.
+    ``answer`` remains the compatibility wrapper used by the standalone RAG
+    endpoint and retains its legacy trace shape.
+    """
 
     RUNNING = "running"
     COMPLETED = "completed"
@@ -93,73 +115,18 @@ class RAGService:
         )
 
         try:
-            vector_store = self.vector_store_factory(db)
-            if not vector_store.has_ready_chunks():
-                self._record_retrieval_step(
-                    db,
-                    run,
-                    candidates=[],
-                    selected=[],
-                    embedding_latency_ms=0,
-                    retrieval_latency_ms=0,
-                    reason="no_ready_knowledge",
-                )
-                response = self._build_response(
-                    answer=INSUFFICIENT_EVIDENCE_ANSWER,
-                    selected_chunks=(),
-                    insufficient_evidence=True,
-                    trace_id=trace_id,
-                    started_perf=started_perf,
-                )
-                self._finish_trace(db, run, response)
-                return response
-
-            embedding_started = time.perf_counter()
-            embedding_service = await self._get_embedding_service(db)
-            query_vector = await embedding_service.embed_text(
-                normalized_question
-            )
-            embedding_latency_ms = self._elapsed_ms(embedding_started)
-
-            retrieval_started = time.perf_counter()
-            try:
-                search_results = vector_store.search(
-                    query_vector,
-                    limit=self.config.top_k,
-                )
-            except KnowledgeProcessingError as exc:
-                raise RAGRetrievalError(exc.user_message) from exc
-            retrieval_latency_ms = self._elapsed_ms(retrieval_started)
-
-            candidates = [
-                self._to_retrieved_chunk(result)
-                for result in search_results
-            ]
-            relevant_candidates = [
-                chunk
-                for chunk in candidates
-                if chunk.score >= self.config.min_relevance_score
-            ]
-            context = assemble_context(
-                relevant_candidates,
-                max_characters=self.config.max_context_characters,
-            )
-            reason = (
-                "no_relevant_evidence"
-                if not context.chunks
-                else "relevance_threshold"
-            )
+            retrieval = await self.retrieve(db, normalized_question)
             retrieval_step = self._record_retrieval_step(
                 db,
                 run,
-                candidates=candidates,
-                selected=context.chunks,
-                embedding_latency_ms=embedding_latency_ms,
-                retrieval_latency_ms=retrieval_latency_ms,
-                reason=reason,
+                candidates=list(retrieval.candidates),
+                selected=retrieval.context.chunks,
+                embedding_latency_ms=retrieval.embedding_latency_ms,
+                retrieval_latency_ms=retrieval.retrieval_latency_ms,
+                reason=retrieval.reason,
             )
 
-            if not context.chunks:
+            if retrieval.insufficient_evidence:
                 response = self._build_response(
                     answer=INSUFFICIENT_EVIDENCE_ANSWER,
                     selected_chunks=(),
@@ -171,42 +138,19 @@ class RAGService:
                 return response
 
             generation_started = time.perf_counter()
-            try:
-                ai_service = self.ai_service_factory(db)
-                run.provider = ai_service.provider
-                run.model = ai_service.model
-                llm_response = await ai_service.chat(
-                    [
-                        ChatMessage(
-                            role="system",
-                            content=RAG_SYSTEM_PROMPT,
-                        ),
-                        ChatMessage(
-                            role="user",
-                            content=build_user_prompt(
-                                normalized_question,
-                                context.text,
-                            ),
-                        ),
-                    ],
-                    temperature=0.0,
-                    max_output_tokens=800,
-                )
-            except AIConfigurationError as exc:
-                raise RAGGenerationError(str(exc)) from exc
-            except LLMError as exc:
-                raise RAGGenerationError(exc.user_message) from exc
+            llm_response = await self.generate_from_context(
+                db,
+                retrieval.question,
+                retrieval.context,
+            )
+            run.provider = llm_response.provider
+            run.model = llm_response.model
 
             generation_latency_ms = self._elapsed_ms(generation_started)
-            answer = llm_response.content.strip()
-            if not answer:
-                raise RAGGenerationError(
-                    "The AI provider returned an empty grounded answer."
-                )
 
             response = self._build_response(
-                answer=answer,
-                selected_chunks=context.chunks,
+                answer=llm_response.content,
+                selected_chunks=retrieval.context.chunks,
                 insufficient_evidence=False,
                 trace_id=trace_id,
                 started_perf=started_perf,
@@ -237,6 +181,130 @@ class RAGService:
             error = RAGError("The grounded answer could not be completed.")
             self._fail_trace(db, run, error.user_message, started_perf)
             raise error from exc
+
+    async def retrieve(
+        self,
+        db: Session,
+        question: str,
+    ) -> RAGRetrievalResult:
+        """Retrieve bounded evidence without constructing an LLM service."""
+        normalized_question = self._normalize_question(question)
+        vector_store = self.vector_store_factory(db)
+
+        if not vector_store.has_ready_chunks():
+            return RAGRetrievalResult(
+                question=normalized_question,
+                candidates=(),
+                context=ContextAssembly(text="", chunks=()),
+                embedding_latency_ms=0,
+                retrieval_latency_ms=0,
+                reason="no_ready_knowledge",
+            )
+
+        embedding_started = time.perf_counter()
+        try:
+            embedding_service = await self._get_embedding_service(db)
+            query_vector = await embedding_service.embed_text(
+                normalized_question
+            )
+        except EmbeddingError as exc:
+            raise RAGEmbeddingError(exc.user_message) from exc
+        embedding_latency_ms = self._elapsed_ms(embedding_started)
+
+        retrieval_started = time.perf_counter()
+        try:
+            search_results = vector_store.search(
+                query_vector,
+                limit=self.config.top_k,
+            )
+        except KnowledgeProcessingError as exc:
+            raise RAGRetrievalError(exc.user_message) from exc
+        except SQLAlchemyError as exc:
+            raise RAGRetrievalError(
+                "The knowledge base is currently unavailable."
+            ) from exc
+        retrieval_latency_ms = self._elapsed_ms(retrieval_started)
+
+        candidates = tuple(
+            self._to_retrieved_chunk(result)
+            for result in search_results
+        )
+        relevant_candidates = tuple(
+            chunk
+            for chunk in candidates
+            if chunk.score >= self.config.min_relevance_score
+        )
+        context = assemble_context(
+            relevant_candidates,
+            max_characters=self.config.max_context_characters,
+        )
+
+        return RAGRetrievalResult(
+            question=normalized_question,
+            candidates=candidates,
+            context=context,
+            embedding_latency_ms=embedding_latency_ms,
+            retrieval_latency_ms=retrieval_latency_ms,
+            reason=(
+                "no_relevant_evidence"
+                if not context.chunks
+                else "relevance_threshold"
+            ),
+        )
+
+    async def generate_from_context(
+        self,
+        db: Session,
+        question: str,
+        context: ContextAssembly | Sequence[RAGRetrievedChunk],
+    ) -> LLMResponse:
+        """Generate using the existing grounded prompt and LLM abstraction."""
+        normalized_question = self._normalize_question(question)
+        assembled_context = (
+            context
+            if isinstance(context, ContextAssembly)
+            else assemble_context(
+                context,
+                max_characters=self.config.max_context_characters,
+            )
+        )
+
+        if not assembled_context.chunks:
+            raise RAGGenerationError(
+                "Grounded generation requires retrieved evidence."
+            )
+
+        try:
+            ai_service = self.ai_service_factory(db)
+            llm_response = await ai_service.chat(
+                [
+                    ChatMessage(
+                        role="system",
+                        content=RAG_SYSTEM_PROMPT,
+                    ),
+                    ChatMessage(
+                        role="user",
+                        content=build_user_prompt(
+                            normalized_question,
+                            assembled_context.text,
+                        ),
+                    ),
+                ],
+                temperature=0.0,
+                max_output_tokens=800,
+            )
+        except AIConfigurationError as exc:
+            raise RAGGenerationError(str(exc)) from exc
+        except LLMError as exc:
+            raise RAGGenerationError(exc.user_message) from exc
+
+        answer = llm_response.content.strip()
+        if not answer:
+            raise RAGGenerationError(
+                "The AI provider returned an empty grounded answer."
+            )
+
+        return llm_response.model_copy(update={"content": answer})
 
     async def _get_embedding_service(self, db: Session) -> EmbeddingService:
         if self.embedding_service is not None:
@@ -286,6 +354,7 @@ class RAGService:
     ) -> AgentStep:
         step = AgentStep(
             agent_run_id=run.id,
+            sequence_number=1,
             step_type=self.RETRIEVAL_STEP,
             input_summary="Knowledge retrieval for a single question.",
             output_summary=(
