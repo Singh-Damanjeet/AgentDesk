@@ -78,6 +78,8 @@ class RAGService:
         self,
         db: Session,
         question: str,
+        *,
+        ticket_id: str | None = None,
     ) -> RAGResponse:
         normalized_question = self._normalize_question(question)
         started_at = datetime.now(timezone.utc)
@@ -87,6 +89,7 @@ class RAGService:
             db,
             trace_id=trace_id,
             started_at=started_at,
+            ticket_id=ticket_id,
         )
 
         try:
@@ -250,8 +253,10 @@ class RAGService:
         *,
         trace_id: str,
         started_at: datetime,
+        ticket_id: str | None,
     ) -> AgentRun:
         run = AgentRun(
+            ticket_id=ticket_id,
             trace_id=trace_id,
             status=self.RUNNING,
             started_at=started_at,

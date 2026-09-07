@@ -140,6 +140,103 @@ export type RAGResponse = {
   trace_id: string;
 };
 
+export type TicketStatus =
+  | "open"
+  | "ai_processing"
+  | "waiting_customer"
+  | "human_review"
+  | "resolved"
+  | "closed";
+
+export type MessageSenderType = "customer" | "ai" | "human" | "system";
+
+export type TicketCustomer = {
+  id: string;
+  name: string | null;
+  email: string | null;
+  external_customer_id: string | null;
+};
+
+export type TicketMessage = {
+  id: string;
+  sequence_number: number;
+  sender_type: MessageSenderType;
+  content: string;
+  channel: string;
+  created_at: string;
+};
+
+export type AgentTraceRetrievalSummary = {
+  reason: string | null;
+  candidate_count: number;
+  selected_count: number;
+};
+
+export type AgentTraceSummary = {
+  trace_id: string;
+  status: string;
+  provider: string | null;
+  model: string | null;
+  latency_ms: number | null;
+  error: string | null;
+  started_at: string;
+  finished_at: string | null;
+  retrieval: AgentTraceRetrievalSummary | null;
+};
+
+export type TicketSummary = {
+  id: string;
+  session_id: string;
+  subject: string | null;
+  status: TicketStatus;
+  priority: "low" | "normal" | "high" | "urgent";
+  channel: string;
+  customer: TicketCustomer | null;
+  last_message_preview: string | null;
+  message_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TicketListResponse = {
+  items: TicketSummary[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type TicketDetail = {
+  id: string;
+  session_id: string;
+  subject: string | null;
+  category: string | null;
+  status: TicketStatus;
+  priority: "low" | "normal" | "high" | "urgent";
+  channel: string;
+  customer: TicketCustomer | null;
+  created_at: string;
+  updated_at: string;
+  messages: TicketMessage[];
+  agent_runs: AgentTraceSummary[];
+};
+
+export type ConversationCustomerInput = {
+  name?: string | null;
+  email?: string | null;
+  external_customer_id?: string | null;
+};
+
+export type CreateConversationRequest = {
+  session_id?: string;
+  channel?: string;
+  subject?: string;
+  customer?: ConversationCustomerInput;
+};
+
+export type ConversationMessageRequest = {
+  content: string;
+};
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
@@ -382,5 +479,106 @@ export async function queryRAG(
       body: JSON.stringify(data),
     },
     "Unable to query the knowledge base",
+  );
+}
+
+export async function listTickets(options: {
+  status?: TicketStatus;
+  limit?: number;
+  offset?: number;
+} = {}): Promise<TicketListResponse> {
+  const params = new URLSearchParams();
+
+  if (options.status) {
+    params.set("status", options.status);
+  }
+
+  if (options.limit !== undefined) {
+    params.set("limit", String(options.limit));
+  }
+
+  if (options.offset !== undefined) {
+    params.set("offset", String(options.offset));
+  }
+
+  const query = params.toString();
+  return requestJson<TicketListResponse>(
+    `/api/tickets${query ? `?${query}` : ""}`,
+    {
+      cache: "no-store",
+    },
+    "Unable to load tickets",
+  );
+}
+
+export async function getTicket(ticketId: string): Promise<TicketDetail> {
+  return requestJson<TicketDetail>(
+    `/api/tickets/${encodeURIComponent(ticketId)}`,
+    {
+      cache: "no-store",
+    },
+    "Unable to load ticket",
+  );
+}
+
+export async function updateTicketStatus(
+  ticketId: string,
+  status: TicketStatus,
+): Promise<TicketDetail> {
+  return requestJson<TicketDetail>(
+    `/api/tickets/${encodeURIComponent(ticketId)}/status`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ status }),
+    },
+    "Unable to update ticket status",
+  );
+}
+
+export async function createConversation(
+  data: CreateConversationRequest = {},
+): Promise<TicketDetail> {
+  return requestJson<TicketDetail>(
+    "/api/conversations",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    },
+    "Unable to create conversation",
+  );
+}
+
+export async function getConversation(
+  sessionId: string,
+): Promise<TicketDetail> {
+  return requestJson<TicketDetail>(
+    `/api/conversations/${encodeURIComponent(sessionId)}`,
+    {
+      cache: "no-store",
+    },
+    "Unable to load conversation",
+  );
+}
+
+export async function sendConversationMessage(
+  sessionId: string,
+  data: ConversationMessageRequest,
+): Promise<TicketDetail> {
+  return requestJson<TicketDetail>(
+    `/api/conversations/${encodeURIComponent(sessionId)}/messages`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    },
+    "Unable to send conversation message",
   );
 }

@@ -4,11 +4,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes.config import router as config_router
+from app.api.routes.conversations import router as conversations_router
 from app.api.routes.dashboard import router as dashboard_router
 from app.api.routes.health import router as health_router
 from app.api.routes.knowledge import router as knowledge_router
 from app.api.routes.rag import router as rag_router
 from app.api.routes.settings import router as settings_router
+from app.api.routes.tickets import router as tickets_router
 from app.core.logging import RequestLoggingMiddleware
 
 
@@ -65,6 +67,16 @@ def create_app() -> FastAPI:
 
     app.include_router(
         rag_router,
+        prefix="/api",
+    )
+
+    app.include_router(
+        tickets_router,
+        prefix="/api",
+    )
+
+    app.include_router(
+        conversations_router,
         prefix="/api",
     )
 

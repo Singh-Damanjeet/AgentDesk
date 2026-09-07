@@ -3,9 +3,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.ai_providers import is_supported_ai_configuration
+from app.core.tickets import ACTIVE_TICKET_STATUSES as ACTIVE_TICKET_STATUS_SET
 from app.models.ai_provider import AIProvider
 from app.models.knowledge_document import KnowledgeDocument
-from app.models.ticket import Ticket
 from app.schemas.dashboard import (
     DashboardAIProviderStatus,
     DashboardKnowledgeStatus,
@@ -16,6 +16,7 @@ from app.schemas.dashboard import (
     DashboardWidgetStatus,
 )
 from app.services.ai_provider_service import AIProviderService
+from app.services.ticket_service import TicketService, TicketServiceError
 
 
 class DashboardServiceError(RuntimeError):
@@ -23,21 +24,20 @@ class DashboardServiceError(RuntimeError):
 
 
 class DashboardService:
-    OPEN_TICKET_STATUS = "open"
+    ACTIVE_TICKET_STATUSES = ACTIVE_TICKET_STATUS_SET
 
     @staticmethod
     def get_overview(db: Session) -> DashboardOverviewResponse:
         try:
             provider = AIProviderService.get(db)
-            open_ticket_count = db.scalar(
-                select(func.count(Ticket.id)).where(
-                    Ticket.status == DashboardService.OPEN_TICKET_STATUS
-                )
+            open_ticket_count = TicketService.count(
+                db,
+                statuses=DashboardService.ACTIVE_TICKET_STATUSES,
             )
             knowledge_document_count = db.scalar(
                 select(func.count(KnowledgeDocument.id))
             )
-        except SQLAlchemyError as exc:
+        except (SQLAlchemyError, TicketServiceError) as exc:
             db.rollback()
             raise DashboardServiceError(
                 "Dashboard data is currently unavailable."

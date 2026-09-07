@@ -21,6 +21,7 @@ from app.models.agent_run import AgentRun
 from app.models.agent_step import AgentStep
 from app.models.knowledge_chunk import KnowledgeChunk
 from app.models.knowledge_document import KnowledgeDocument
+from app.models.ticket import Ticket
 from app.rag.config import (
     INSUFFICIENT_EVIDENCE_ANSWER,
     MAX_QUESTION_LENGTH,
@@ -214,6 +215,38 @@ def test_known_question_returns_grounded_answer_sources_and_trace(
         assert ai_service.messages[0].role == "system"
         assert "untrusted document data" in ai_service.messages[0].content
         assert "refund-policy.pdf" in ai_service.messages[1].content
+
+
+def test_ticket_id_is_persisted_on_rag_trace(rag_database):
+    with Session(rag_database) as db:
+        ticket = Ticket(channel="web")
+        db.add(ticket)
+        db.commit()
+        db.refresh(ticket)
+        add_document(
+            db,
+            filename="refund-policy.txt",
+            content="Refunds are available within 30 days.",
+            embedding=[1.0, 0.0],
+        )
+        service = RAGService(
+            embedding_service=FakeEmbeddingService([1.0, 0.0]),
+            ai_service_factory=lambda _db: FakeAIService(),
+        )
+
+        response = run_async(
+            service.answer(
+                db,
+                "How long do I have to request a refund?",
+                ticket_id=ticket.id,
+            )
+        )
+
+        run = db.scalar(
+            select(AgentRun).where(AgentRun.trace_id == response.trace_id)
+        )
+        assert run is not None
+        assert run.ticket_id == ticket.id
 
 
 def test_empty_knowledge_base_returns_insufficient_evidence_without_ai_calls(
