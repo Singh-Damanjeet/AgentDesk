@@ -81,6 +81,29 @@ export type DashboardOverview = {
   };
 };
 
+export type WidgetPosition = "bottom-right" | "bottom-left";
+
+export type WidgetSettings = {
+  id: string;
+  project_id: string;
+  display_name: string;
+  welcome_message: string;
+  position: WidgetPosition;
+  enabled: boolean;
+  allowed_domains: string[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type WidgetSettingsUpdate = {
+  project_id: string;
+  display_name: string;
+  welcome_message: string;
+  position: WidgetPosition;
+  enabled: boolean;
+  allowed_domains: string[];
+};
+
 export type KnowledgeDocumentStatus =
   | "uploaded"
   | "processing"
@@ -237,7 +260,7 @@ export type ConversationMessageRequest = {
   content: string;
 };
 
-const API_BASE_URL =
+export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -396,6 +419,40 @@ export async function completeSetup(): Promise<ConfigStatusResponse> {
       method: "POST",
     },
     "Unable to complete AgentDesk setup",
+  );
+}
+
+export async function getWidgetSettings(): Promise<WidgetSettings | null> {
+  const response = await fetch(`${API_BASE_URL}/api/settings/widget`, {
+    cache: "no-store",
+  });
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      await getErrorMessage(response, "Unable to load widget settings"),
+    );
+  }
+
+  return (await response.json()) as WidgetSettings | null;
+}
+
+export async function updateWidgetSettings(
+  data: WidgetSettingsUpdate,
+): Promise<WidgetSettings> {
+  return requestJson<WidgetSettings>(
+    "/api/settings/widget",
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    },
+    "Unable to save widget settings",
   );
 }
 

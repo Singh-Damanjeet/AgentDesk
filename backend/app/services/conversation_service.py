@@ -29,6 +29,7 @@ from app.schemas.tickets import (
 )
 from app.services.ticket_service import (
     TicketConflictError,
+    TicketNotFoundError,
     TicketService,
     TicketServiceError,
     TicketValidationError,
@@ -66,17 +67,26 @@ class ConversationService:
         *,
         session_id: str | None,
         channel: str,
+        project_id: str | None = None,
         subject: str | None = None,
         customer: ConversationCustomerInput | None = None,
     ) -> TicketDetailResponse:
         if session_id is not None:
             ticket = TicketService.get_by_session(db, session_id)
+            if (
+                project_id is not None
+                and ticket.widget_project_id != project_id
+            ):
+                raise TicketNotFoundError(
+                    "Conversation session not found."
+                )
             return self.to_detail(db, ticket)
 
         customer_id = self._create_customer(db, customer)
         ticket = TicketService.create(
             db,
             channel=channel,
+            widget_project_id=project_id,
             customer_id=customer_id,
             subject=subject,
         )
@@ -86,11 +96,16 @@ class ConversationService:
         self,
         db: Session,
         session_id: str,
+        project_id: str | None = None,
     ) -> TicketDetailResponse:
-        return self.to_detail(
-            db,
-            TicketService.get_by_session(db, session_id),
-        )
+        ticket = TicketService.get_by_session(db, session_id)
+        if (
+            project_id is not None
+            and ticket.widget_project_id != project_id
+        ):
+            raise TicketNotFoundError("Conversation session not found.")
+
+        return self.to_detail(db, ticket)
 
     def get_ticket_detail(
         self,
@@ -103,8 +118,15 @@ class ConversationService:
         self,
         db: Session,
         session_id: str,
+        project_id: str | None = None,
     ) -> list[TicketMessageResponse]:
         ticket = TicketService.get_by_session(db, session_id)
+        if (
+            project_id is not None
+            and ticket.widget_project_id != project_id
+        ):
+            raise TicketNotFoundError("Conversation session not found.")
+
         return self._message_responses(db, ticket.id)
 
     async def append_customer_message(
@@ -112,9 +134,15 @@ class ConversationService:
         db: Session,
         *,
         session_id: str,
+        project_id: str | None = None,
         content: str,
     ) -> TicketDetailResponse:
         ticket = TicketService.get_by_session(db, session_id)
+        if (
+            project_id is not None
+            and ticket.widget_project_id != project_id
+        ):
+            raise TicketNotFoundError("Conversation session not found.")
         normalized_content = self._normalize_message(content)
         current_status = self._ticket_status(ticket)
 

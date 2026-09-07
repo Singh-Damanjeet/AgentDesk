@@ -10,7 +10,9 @@ import LoadingState from "@/components/ui/loading-state";
 import {
   getBackendHealth,
   getDashboardOverview,
+  getWidgetSettings,
   type DashboardOverview,
+  type WidgetSettings,
 } from "@/lib/api";
 
 type SystemHealth = "healthy" | "unavailable";
@@ -21,6 +23,8 @@ function getErrorMessage(error: unknown, fallback: string): string {
 
 export default function DashboardPage() {
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
+  const [widgetSettings, setWidgetSettings] =
+    useState<WidgetSettings | null>(null);
   const [systemHealth, setSystemHealth] =
     useState<SystemHealth>("unavailable");
   const [loading, setLoading] = useState(true);
@@ -34,10 +38,12 @@ export default function DashboardPage() {
       setLoading(true);
       setError(null);
 
-      const [overviewResult, healthResult] = await Promise.allSettled([
-        getDashboardOverview(),
-        getBackendHealth(),
-      ]);
+      const [overviewResult, healthResult, widgetResult] =
+        await Promise.allSettled([
+          getDashboardOverview(),
+          getBackendHealth(),
+          getWidgetSettings(),
+        ]);
 
       if (cancelled) {
         return;
@@ -62,6 +68,12 @@ export default function DashboardPage() {
       } else {
         // Health is deliberately independent from the other dashboard cards.
         setSystemHealth("unavailable");
+      }
+
+      if (widgetResult.status === "fulfilled") {
+        setWidgetSettings(widgetResult.value);
+      } else {
+        setWidgetSettings(null);
       }
 
       setLoading(false);
@@ -159,10 +171,20 @@ export default function DashboardPage() {
                 label="Website Chat"
                 value={
                   overview.widget.configured
-                    ? "Configured"
-                    : "Not configured"
+                    ? "Enabled"
+                    : widgetSettings
+                      ? "Disabled"
+                      : "Not configured"
                 }
-                description="Website chat setup is not available yet."
+                description={
+                  widgetSettings
+                    ? `${widgetSettings.allowed_domains.length} allowed domain${
+                        widgetSettings.allowed_domains.length === 1
+                          ? ""
+                          : "s"
+                      }.`
+                    : "Configure the customer-facing chat widget."
+                }
                 tone={overview.widget.configured ? "success" : "neutral"}
               />
 
@@ -181,7 +203,7 @@ export default function DashboardPage() {
             <div className="mt-8">
               <EmptyState
                 title="Your support workspace is ready"
-                description="Inbox, website chat, and agent runs will become available as those phases are implemented."
+                description="Manage your support conversations, knowledge base, and customer-facing website chat from this workspace."
               />
             </div>
           </>

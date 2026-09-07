@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AgentDesk Widget Demo</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <style>
+    button {
+      background: hotpink !important;
+      color: yellow !important;
+      font-size: 40px !important;
+      border: 10px solid red !important;
+    }
+
+    input {
+      font-size: 40px !important;
+      background: lime !important;
+    }
+
+    body {
+      font-family: fantasy !important;
+    }
+  </style>
+  </head>
+  <body>
+    <main class="demo-shell">
+      <p class="eyebrow">External website</p>
+      <h1>AgentDesk support widget demo</h1>
+      <p>
+        This page intentionally applies aggressive global styles. The support
+        chat should remain isolated inside its iframe and shadow-root launcher.
+      </p>
+      <button type="button">Host page button</button>
+    </main>
+
+    <script
+      src="http://127.0.0.1:8000/widget.js"
+      data-project="local-default"
+    ></script>
+  </body>
+</html>

@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.ai_providers import is_supported_ai_configuration
 from app.core.tickets import ACTIVE_TICKET_STATUSES as ACTIVE_TICKET_STATUS_SET
+from app.core.widget import DEFAULT_WIDGET_PROJECT_ID
 from app.models.ai_provider import AIProvider
 from app.models.knowledge_document import KnowledgeDocument
 from app.schemas.dashboard import (
@@ -17,6 +18,7 @@ from app.schemas.dashboard import (
 )
 from app.services.ai_provider_service import AIProviderService
 from app.services.ticket_service import TicketService, TicketServiceError
+from app.services.widget_service import WidgetService, WidgetServiceError
 
 
 class DashboardServiceError(RuntimeError):
@@ -34,10 +36,18 @@ class DashboardService:
                 db,
                 statuses=DashboardService.ACTIVE_TICKET_STATUSES,
             )
+            widget_config = WidgetService.get(
+                db,
+                DEFAULT_WIDGET_PROJECT_ID,
+            )
             knowledge_document_count = db.scalar(
                 select(func.count(KnowledgeDocument.id))
             )
-        except (SQLAlchemyError, TicketServiceError) as exc:
+        except (
+            SQLAlchemyError,
+            TicketServiceError,
+            WidgetServiceError,
+        ) as exc:
             db.rollback()
             raise DashboardServiceError(
                 "Dashboard data is currently unavailable."
@@ -55,8 +65,13 @@ class DashboardService:
             tickets=DashboardTicketStatus(
                 open_count=max(open_ticket_count or 0, 0),
             ),
-            # The widget is not configurable in the current release.
-            widget=DashboardWidgetStatus(configured=False),
+            widget=DashboardWidgetStatus(
+                configured=bool(
+                    widget_config is not None
+                    and widget_config.enabled
+                    and widget_config.allowed_domains
+                )
+            ),
             system=DashboardSystemStatus(status="healthy"),
         )
 

@@ -8,6 +8,7 @@ from app.models.knowledge_chunk import KnowledgeChunk
 from app.models.knowledge_document import KnowledgeDocument
 from app.models.system_config import SystemConfig
 from app.models.ticket import Ticket
+from app.models.widget_config import WidgetConfig
 
 __all__ = [
     "AgentRun",
@@ -20,4 +21,5 @@ __all__ = [
     "KnowledgeDocument",
     "SystemConfig",
     "Ticket",
+    "WidgetConfig",
 ]

@@ -28,6 +28,11 @@ class Ticket(Base):
         nullable=True,
     )
 
+    widget_project_id: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+
     session_id: Mapped[str] = mapped_column(
         String(100),
         default=lambda: str(uuid.uuid4()),

@@ -11,7 +11,13 @@ from app.api.routes.knowledge import router as knowledge_router
 from app.api.routes.rag import router as rag_router
 from app.api.routes.settings import router as settings_router
 from app.api.routes.tickets import router as tickets_router
+from app.api.routes.widget import (
+    admin_router as widget_admin_router,
+    loader_router as widget_loader_router,
+    router as widget_router,
+)
 from app.core.logging import RequestLoggingMiddleware
+from app.core.widget_cors import WidgetCORSMiddleware
 
 
 logging.basicConfig(
@@ -39,6 +45,10 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Widget origins are persisted configuration, so their CORS response
+    # headers are handled separately while route services enforce access.
+    app.add_middleware(WidgetCORSMiddleware)
 
     app.include_router(
         health_router,
@@ -79,6 +89,18 @@ def create_app() -> FastAPI:
         conversations_router,
         prefix="/api",
     )
+
+    app.include_router(
+        widget_admin_router,
+        prefix="/api",
+    )
+
+    app.include_router(
+        widget_router,
+        prefix="/api",
+    )
+
+    app.include_router(widget_loader_router)
 
     return app
 

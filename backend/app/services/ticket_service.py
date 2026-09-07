@@ -14,6 +14,7 @@ from app.core.tickets import (
     TicketPriority,
     TicketStatus,
 )
+from app.core.widget import MAX_WIDGET_PROJECT_ID_LENGTH
 from app.models.customer import Customer
 from app.models.message import Message
 from app.models.ticket import Ticket
@@ -59,6 +60,7 @@ class TicketService:
         channel: str,
         session_id: str | None = None,
         customer_id: str | None = None,
+        widget_project_id: str | None = None,
         subject: str | None = None,
         category: str | None = None,
         priority: TicketPriority | str = TicketPriority.NORMAL,
@@ -82,11 +84,20 @@ class TicketService:
             if customer_id is not None
             else None
         )
+        normalized_widget_project_id = (
+            TicketService._normalize_optional_identifier(
+                widget_project_id,
+                field_name="widget project ID",
+            )
+            if widget_project_id is not None
+            else None
+        )
         normalized_priority = TicketService._normalize_priority(priority)
 
         ticket = Ticket(
             session_id=normalized_session_id,
             customer_id=normalized_customer_id,
+            widget_project_id=normalized_widget_project_id,
             channel=normalized_channel,
             subject=TicketService._normalize_optional_text(subject, 500),
             category=TicketService._normalize_optional_text(category, 100),
@@ -383,6 +394,23 @@ class TicketService:
             raise TicketValidationError(
                 f"The {field_name} is invalid."
             ) from exc
+
+    @staticmethod
+    def _normalize_optional_identifier(
+        value: str,
+        *,
+        field_name: str,
+    ) -> str:
+        normalized = value.strip()
+        if (
+            not normalized
+            or len(normalized) > MAX_WIDGET_PROJECT_ID_LENGTH
+        ):
+            raise TicketValidationError(
+                f"The {field_name} is invalid."
+            )
+
+        return normalized
 
     @staticmethod
     def _normalize_channel(channel: str) -> str:
