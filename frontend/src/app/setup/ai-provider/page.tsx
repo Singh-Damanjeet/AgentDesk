@@ -9,28 +9,20 @@ import {
   testAIConnection,
   updateAISettings,
 } from "@/lib/api";
-
-const PROVIDER = "gemini";
-
-const MODEL_OPTIONS = [
-  {
-    value: "gemini-3.6-flash",
-    label: "Gemini 3.6 Flash",
-  },
-  {
-    value: "gemini-2.5-flash",
-    label: "Gemini 2.5 Flash",
-  },
-  {
-    value: "gemini-2.5-pro",
-    label: "Gemini 2.5 Pro",
-  },
-];
+import {
+  AI_MODEL_OPTIONS,
+  AI_PROVIDER_OPTIONS,
+  DEFAULT_AI_MODELS,
+  getAIProviderOption,
+  isAIProvider,
+  type AIProviderId,
+} from "@/lib/ai-providers";
 
 export default function AIProviderSetupPage() {
   const router = useRouter();
 
-  const [model, setModel] = useState(MODEL_OPTIONS[0].value);
+  const [provider, setProvider] = useState<AIProviderId>("gemini");
+  const [model, setModel] = useState(DEFAULT_AI_MODELS.gemini);
   const [apiKey, setApiKey] = useState("");
   const [existingKey, setExistingKey] = useState(false);
   const [tested, setTested] = useState(false);
@@ -54,7 +46,12 @@ export default function AIProviderSetupPage() {
         }
 
         if (settings) {
-          setModel(settings.model);
+          const nextProvider = isAIProvider(settings.provider)
+            ? settings.provider
+            : "gemini";
+
+          setProvider(nextProvider);
+          setModel(settings.model || DEFAULT_AI_MODELS[nextProvider]);
           setExistingKey(settings.api_key_configured);
         }
       } catch (loadError) {
@@ -81,9 +78,11 @@ export default function AIProviderSetupPage() {
 
   async function handleTest() {
     const normalizedApiKey = apiKey.trim();
+    const providerOption = getAIProviderOption(provider);
+    const keyLabel = providerOption?.keyLabel ?? "API key";
 
     if (!normalizedApiKey) {
-      setError("Enter a Gemini API key before testing.");
+      setError(`Enter a ${keyLabel} before testing.`);
       setMessage(null);
       return;
     }
@@ -95,7 +94,7 @@ export default function AIProviderSetupPage() {
 
     try {
       const result = await testAIConnection({
-        provider: PROVIDER,
+        provider,
         api_key: normalizedApiKey,
         model,
       });
@@ -120,9 +119,11 @@ export default function AIProviderSetupPage() {
   async function saveSettings(allowUntested: boolean) {
     const normalizedApiKey = apiKey.trim();
     const keepingExistingKey = existingKey && !normalizedApiKey;
+    const providerOption = getAIProviderOption(provider);
+    const keyLabel = providerOption?.keyLabel ?? "API key";
 
     if (!normalizedApiKey && !keepingExistingKey) {
-      setError("Enter a Gemini API key before continuing.");
+      setError(`Enter a ${keyLabel} before continuing.`);
       setMessage(null);
       return;
     }
@@ -141,7 +142,7 @@ export default function AIProviderSetupPage() {
 
     try {
       await updateAISettings({
-        provider: PROVIDER,
+        provider,
         model,
         api_key: normalizedApiKey || undefined,
         embedding_provider: "local",
@@ -154,11 +155,21 @@ export default function AIProviderSetupPage() {
       setError(
         saveError instanceof Error
           ? saveError.message
-          : "Unable to save Gemini settings.",
+          : "Unable to save AI provider settings.",
       );
     } finally {
       setSaving(false);
     }
+  }
+
+  function handleProviderChange(nextProvider: AIProviderId) {
+    setProvider(nextProvider);
+    setModel(DEFAULT_AI_MODELS[nextProvider]);
+    setApiKey("");
+    setExistingKey(false);
+    setTested(false);
+    setMessage(null);
+    setError(null);
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -177,6 +188,9 @@ export default function AIProviderSetupPage() {
   }
 
   const hasNewApiKey = apiKey.trim().length > 0;
+  const providerOption = getAIProviderOption(provider);
+  const apiKeyLabel = providerOption?.keyLabel ?? "API key";
+  const modelOptions = AI_MODEL_OPTIONS[provider];
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white">
@@ -186,45 +200,31 @@ export default function AIProviderSetupPage() {
         <h1 className="mt-4 text-3xl font-semibold">AI Provider</h1>
 
         <p className="mt-3 text-zinc-400">
-          Configure Google Gemini for AgentDesk.
+          {providerOption?.description ?? "Configure an AI provider for AgentDesk."}
         </p>
 
         <form onSubmit={handleSubmit} className="mt-10 space-y-6">
           <div>
             <label
-              htmlFor="provider"
+              htmlFor="provider-select"
               className="text-sm text-zinc-300"
             >
               Provider
             </label>
 
-            <input
-              id="provider"
-              name="provider"
-              value="Google Gemini"
-              autoComplete="off"
-              disabled
-              className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-zinc-400"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="model" className="text-sm text-zinc-300">
-              Model
-            </label>
-
             <select
-              id="model"
-              name="model"
-              value={model}
+              id="provider-select"
+              name="provider"
+              aria-label="Provider"
+              value={provider}
               onChange={(event) => {
-                setModel(event.target.value);
-                setTested(false);
-                setMessage(null);
+                if (isAIProvider(event.target.value)) {
+                  handleProviderChange(event.target.value);
+                }
               }}
               className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 outline-none focus:border-zinc-600"
             >
-              {MODEL_OPTIONS.map((option) => (
+              {AI_PROVIDER_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
@@ -233,8 +233,39 @@ export default function AIProviderSetupPage() {
           </div>
 
           <div>
+            <label htmlFor="model" className="text-sm text-zinc-300">
+              Model
+            </label>
+
+            <input
+              id="model"
+              name="model"
+              value={model}
+              list="ai-model-options"
+              onChange={(event) => {
+                setModel(event.target.value);
+                setTested(false);
+                setMessage(null);
+              }}
+              className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 outline-none focus:border-zinc-600"
+            />
+            <datalist id="ai-model-options">
+              {modelOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </datalist>
+            {provider === "openrouter" && (
+              <p className="mt-2 text-xs text-zinc-500">
+                Enter any OpenRouter author/model slug. The suggestions are examples and the selected model must support structured output.
+              </p>
+            )}
+          </div>
+
+          <div>
             <label htmlFor="api-key" className="text-sm text-zinc-300">
-              Gemini API key
+              {apiKeyLabel}
             </label>
 
             <input
@@ -252,7 +283,7 @@ export default function AIProviderSetupPage() {
               placeholder={
                 existingKey
                   ? "Existing API key is securely stored"
-                  : "Enter Gemini API key"
+                  : `Enter ${apiKeyLabel}`
               }
               className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 outline-none focus:border-zinc-600"
             />

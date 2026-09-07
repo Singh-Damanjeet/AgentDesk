@@ -813,7 +813,8 @@ _PROMPT_MANIPULATION_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _SECRET_LEAK_PATTERN = re.compile(
-    r"(?:gemini[_ -]?api[_ -]?key|authorization\s*:\s*bearer|"
+    r"(?:(?:gemini|openrouter)[_ -]?api[_ -]?key|"
+    r"authorization\s*:\s*bearer|"
     r"-----BEGIN [A-Z ]+ PRIVATE KEY-----|\bsk-[A-Za-z0-9]{12,}|"
     r"\bAIza[0-9A-Za-z_-]{20,}\b)",
     re.IGNORECASE,

@@ -14,23 +14,14 @@ import {
   updateCompanySettings,
   type CompanySettings,
 } from "@/lib/api";
-
-const PROVIDER = "gemini";
-
-const MODEL_OPTIONS = [
-  {
-    value: "gemini-3.6-flash",
-    label: "Gemini 3.6 Flash",
-  },
-  {
-    value: "gemini-2.5-flash",
-    label: "Gemini 2.5 Flash",
-  },
-  {
-    value: "gemini-2.5-pro",
-    label: "Gemini 2.5 Pro",
-  },
-];
+import {
+  AI_MODEL_OPTIONS,
+  AI_PROVIDER_OPTIONS,
+  DEFAULT_AI_MODELS,
+  getAIProviderOption,
+  isAIProvider,
+  type AIProviderId,
+} from "@/lib/ai-providers";
 
 const inputClassName =
   "mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm text-white outline-none transition-colors focus:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60";
@@ -73,7 +64,8 @@ export default function SettingsPage() {
 
   const [company, setCompany] =
     useState<CompanyFormState>(defaultCompanyForm);
-  const [model, setModel] = useState(MODEL_OPTIONS[0].value);
+  const [provider, setProvider] = useState<AIProviderId>("gemini");
+  const [model, setModel] = useState(DEFAULT_AI_MODELS.gemini);
   const [apiKey, setApiKey] = useState("");
   const [existingApiKey, setExistingApiKey] = useState(false);
   const [tested, setTested] = useState(false);
@@ -108,7 +100,12 @@ export default function SettingsPage() {
         }
 
         if (aiSettings) {
-          setModel(aiSettings.model);
+          const nextProvider = isAIProvider(aiSettings.provider)
+            ? aiSettings.provider
+            : "gemini";
+
+          setProvider(nextProvider);
+          setModel(aiSettings.model || DEFAULT_AI_MODELS[nextProvider]);
           setExistingApiKey(aiSettings.api_key_configured);
         }
       } catch (error) {
@@ -160,9 +157,11 @@ export default function SettingsPage() {
 
   async function handleTestAIConnection() {
     const normalizedApiKey = apiKey.trim();
+    const providerOption = getAIProviderOption(provider);
+    const keyLabel = providerOption?.keyLabel ?? "API key";
 
     if (!normalizedApiKey) {
-      setAiError("Enter a Gemini API key before testing.");
+      setAiError(`Enter a ${keyLabel} before testing.`);
       setAiMessage(null);
       return;
     }
@@ -174,7 +173,7 @@ export default function SettingsPage() {
 
     try {
       const result = await testAIConnection({
-        provider: PROVIDER,
+        provider,
         model,
         api_key: normalizedApiKey,
       });
@@ -195,9 +194,11 @@ export default function SettingsPage() {
   async function saveAISettings(allowUntested: boolean) {
     const normalizedApiKey = apiKey.trim();
     const keepingExistingKey = existingApiKey && !normalizedApiKey;
+    const providerOption = getAIProviderOption(provider);
+    const keyLabel = providerOption?.keyLabel ?? "API key";
 
     if (!normalizedApiKey && !keepingExistingKey) {
-      setAiError("Enter a Gemini API key before saving.");
+      setAiError(`Enter a ${keyLabel} before saving.`);
       setAiMessage(null);
       return;
     }
@@ -216,7 +217,7 @@ export default function SettingsPage() {
 
     try {
       const savedSettings = await updateAISettings({
-        provider: PROVIDER,
+        provider,
         model,
         api_key: normalizedApiKey || undefined,
         embedding_provider: "local",
@@ -234,6 +235,16 @@ export default function SettingsPage() {
     } finally {
       setAiSaving(false);
     }
+  }
+
+  function handleProviderChange(nextProvider: AIProviderId) {
+    setProvider(nextProvider);
+    setModel(DEFAULT_AI_MODELS[nextProvider]);
+    setApiKey("");
+    setExistingApiKey(false);
+    setTested(false);
+    setAiMessage(null);
+    setAiError(null);
   }
 
   function handleAISubmit(event: FormEvent<HTMLFormElement>) {
@@ -292,6 +303,9 @@ export default function SettingsPage() {
 
   const hasNewApiKey = apiKey.trim().length > 0;
   const formDisabled = companySaving || aiTesting || aiSaving;
+  const providerOption = getAIProviderOption(provider);
+  const apiKeyLabel = providerOption?.keyLabel ?? "API key";
+  const modelOptions = AI_MODEL_OPTIONS[provider];
 
   return (
     <div>
@@ -461,40 +475,32 @@ export default function SettingsPage() {
           <div>
             <h2 className="text-lg font-semibold text-white">AI Provider</h2>
             <p className="mt-2 text-sm leading-6 text-zinc-500">
-              Use Google Gemini for future support automation. API keys are encrypted server-side.
+              {providerOption?.description ??
+                "Configure the provider used for support automation. API keys are encrypted server-side."}
             </p>
           </div>
 
           <form onSubmit={handleAISubmit} className="mt-6 space-y-5">
             <div>
-              <label htmlFor="settings-provider" className="text-sm text-zinc-300">
+              <label
+                htmlFor="settings-provider"
+                className="text-sm text-zinc-300"
+              >
                 Provider
               </label>
-              <input
-                id="settings-provider"
-                value="Google Gemini"
-                autoComplete="off"
-                readOnly
-                className={`${inputClassName} text-zinc-400`}
-              />
-            </div>
-
-            <div>
-              <label htmlFor="settings-model" className="text-sm text-zinc-300">
-                Model
-              </label>
               <select
-                id="settings-model"
-                value={model}
+                id="settings-provider"
+                name="provider"
+                value={provider}
                 onChange={(event) => {
-                  setModel(event.target.value);
-                  setTested(false);
-                  setAiMessage(null);
+                  if (isAIProvider(event.target.value)) {
+                    handleProviderChange(event.target.value);
+                  }
                 }}
                 className={inputClassName}
                 disabled={formDisabled}
               >
-                {MODEL_OPTIONS.map((option) => (
+                {AI_PROVIDER_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
@@ -503,9 +509,41 @@ export default function SettingsPage() {
             </div>
 
             <div>
+              <label htmlFor="settings-model" className="text-sm text-zinc-300">
+                Model
+              </label>
+              <input
+                id="settings-model"
+                name="model"
+                value={model}
+                list="settings-ai-model-options"
+                onChange={(event) => {
+                  setModel(event.target.value);
+                  setTested(false);
+                  setAiMessage(null);
+                }}
+                className={inputClassName}
+                disabled={formDisabled}
+              />
+              <datalist id="settings-ai-model-options">
+                {modelOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </datalist>
+              {provider === "openrouter" && (
+                <p className="mt-2 text-xs leading-5 text-zinc-500">
+                  Enter any OpenRouter author/model slug. The selected model
+                  must support structured output.
+                </p>
+              )}
+            </div>
+
+            <div>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <label htmlFor="settings-api-key" className="text-sm text-zinc-300">
-                  API key
+                  {apiKeyLabel}
                 </label>
                 <span className="text-xs text-zinc-500">
                   API key: {existingApiKey ? "Configured" : "Not configured"}
@@ -526,7 +564,7 @@ export default function SettingsPage() {
                 placeholder={
                   existingApiKey
                     ? "Enter a replacement API key"
-                    : "Enter Gemini API key"
+                    : `Enter ${apiKeyLabel}`
                 }
                 className={inputClassName}
                 disabled={formDisabled}

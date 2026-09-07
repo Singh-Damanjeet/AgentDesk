@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AgentDesk CSS isolation fixture</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./styles.css" />
+    <style>
+      /* Deliberately hostile host-page rules. The widget must remain usable. */
+      * {
+        box-sizing: border-box !important;
+        font-family: "Comic Sans MS", cursive !important;
+      }
+
+      body {
+        background: #fef08a !important;
+        color: #7f1d1d !important;
+      }
+
+      button {
+        background: hotpink !important;
+        border: 10px solid red !important;
+        color: yellow !important;
+        font-size: 40px !important;
+      }
+
+      input,
+      textarea {
+        background: lime !important;
+        font-size: 40px !important;
+      }
+
+      iframe {
+        border: 20px solid red !important;
+        font-size: 42px !important;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="demo-shell">
+      <p class="eyebrow">Security fixture</p>
+      <h1>Hostile CSS test page</h1>
+      <p>
+        These intentionally extreme rules try to restyle buttons, form fields,
+        and iframes. The AgentDesk launcher and internal chat should remain
+        readable and usable.
+      </p>
+      <button type="button">Host page button</button>
+    </main>
+
+    <script
+      src="http://127.0.0.1:8000/widget.js"
+      data-project="local-default"
+    ></script>
+  </body>
+</html>

@@ -14,6 +14,7 @@ import {
   type DashboardOverview,
   type WidgetSettings,
 } from "@/lib/api";
+import { getAIProviderLabel } from "@/lib/ai-providers";
 
 type SystemHealth = "healthy" | "unavailable";
 
@@ -125,13 +126,13 @@ export default function DashboardPage() {
                 label="AI Provider"
                 value={
                   overview.ai_provider.configured
-                    ? "Gemini"
+                    ? getAIProviderLabel(overview.ai_provider.provider)
                     : "Not configured"
                 }
                 description={
                   overview.ai_provider.configured
                     ? (overview.ai_provider.model ?? "Model configured")
-                    : "Configure Gemini in Settings."
+                    : "Configure an AI provider in Settings."
                 }
                 tone={overview.ai_provider.configured ? "success" : "warning"}
               />

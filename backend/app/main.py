@@ -26,6 +26,9 @@ logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
 )
 
+ADMIN_CORS_METHODS = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+ADMIN_CORS_HEADERS = ["Accept", "Content-Type"]
+
 
 def create_app() -> FastAPI:
     app = FastAPI(
@@ -43,8 +46,8 @@ def create_app() -> FastAPI:
             "http://127.0.0.1:3000",
         ],
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=ADMIN_CORS_METHODS,
+        allow_headers=ADMIN_CORS_HEADERS,
     )
 
     # Widget origins are persisted configuration, so their CORS response

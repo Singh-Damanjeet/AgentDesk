@@ -1,0 +1,13 @@
+AcmeFlow login troubleshooting
+
+If the sign-in page loops, first check that cookies and JavaScript are enabled.
+Try a private browser window, disable extensions that block authentication,
+and confirm the device clock is correct. A password reset is the next step when
+the password is rejected.
+
+If a company identity provider is configured, use the Sign in with SSO button
+and contact the company's identity administrator for provider-side failures.
+Do not send passwords, one-time codes, or reset links to support.
+
+AcmeFlow support cannot inspect an individual login attempt without account
+access. A teammate can review the issue after workspace ownership is verified.

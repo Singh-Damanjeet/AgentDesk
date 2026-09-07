@@ -1,3 +1,5 @@
+import type { AIProviderId } from "./ai-providers";
+
 export type HealthResponse = {
   status: string;
   service: string;
@@ -29,7 +31,7 @@ export type CompanyUpdate = {
 
 export type AIProviderSettings = {
   id: string;
-  provider: string;
+  provider: AIProviderId;
   model: string;
   embedding_provider: string | null;
   embedding_model: string | null;
@@ -38,7 +40,7 @@ export type AIProviderSettings = {
 };
 
 export type AIConnectionTestRequest = {
-  provider: string;
+  provider: AIProviderId;
   model: string;
   api_key: string;
 };
@@ -49,7 +51,7 @@ export type AIConnectionTestResponse = {
 };
 
 export type AIProviderUpdate = {
-  provider: string;
+  provider: AIProviderId;
   model: string;
   api_key?: string;
   embedding_provider?: string | null;
@@ -60,7 +62,7 @@ export type AIProviderUpdate = {
 export type DashboardOverview = {
   ai_provider: {
     configured: boolean;
-    provider: string | null;
+    provider: AIProviderId | string | null;
     model: string | null;
   };
   storage: {

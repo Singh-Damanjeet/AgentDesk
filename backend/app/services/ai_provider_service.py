@@ -1,6 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.ai_providers import api_key_label
 from app.core.secrets import encrypt_secret
 from app.models.ai_provider import AIProvider
 from app.schemas.ai_provider import AIProviderResponse, AIProviderUpdate
@@ -30,17 +31,23 @@ class AIProviderService:
             api_key = None
 
         if api_key is not None and len(api_key) > 4096:
-            raise ValueError("The Gemini API key is too long.")
+            raise ValueError(
+                f"The {api_key_label(data.provider)} is too long."
+            )
 
-        if provider is None and api_key is None:
-            raise ValueError("A Gemini API key is required.")
+        provider_changed = (
+            provider is not None
+            and provider.provider.strip().lower() != data.provider
+        )
 
         if (
-            provider is not None
-            and not provider.encrypted_api_key
-            and api_key is None
-        ):
-            raise ValueError("A Gemini API key is required.")
+            provider is None
+            or provider_changed
+            or not provider.encrypted_api_key
+        ) and api_key is None:
+            raise ValueError(
+                f"A {api_key_label(data.provider)} is required."
+            )
 
         values = data.model_dump(
             exclude={"api_key"}

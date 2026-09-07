@@ -49,7 +49,11 @@ class FakeAIService:
         self,
         classification: ClassificationResult | None = None,
         error: Exception | None = None,
+        provider: str = "gemini",
+        model: str = "gemini-2.5-flash",
     ):
+        self.provider = provider
+        self.model = model
         self.classification = classification or ClassificationResult(
             category="refund",
             urgency="high",
@@ -81,6 +85,8 @@ class FakeRAGService:
         chunks: list[RAGRetrievedChunk] | None = None,
         answer: str = "Refunds may be requested within 30 calendar days.",
         error: Exception | None = None,
+        provider: str = "gemini",
+        model: str = "gemini-2.5-flash",
     ):
         self.chunks = chunks if chunks is not None else [
             RAGRetrievedChunk(
@@ -95,6 +101,8 @@ class FakeRAGService:
         ]
         self.answer = answer
         self.error = error
+        self.provider = provider
+        self.model = model
         self.retrieve_calls = 0
         self.generate_calls = 0
 
@@ -133,8 +141,8 @@ class FakeRAGService:
             raise self.error
         return LLMResponse(
             content=self.answer,
-            provider="gemini",
-            model="gemini-2.5-flash",
+            provider=self.provider,
+            model=self.model,
             latency_ms=7,
         )
 
@@ -233,6 +241,43 @@ def test_faq_workflow_records_ordered_steps_and_reuses_persistence(
         ]
         assert [step.sequence_number for step in steps] == list(range(1, 8))
         assert all(step.step_metadata["passed"] is True for step in steps)
+
+
+def test_openrouter_uses_the_same_workflow_and_records_provider_model(
+    workflow_database,
+):
+    provider = "openrouter"
+    model = "google/gemma-4-26b-a4b-it:free"
+    ai = FakeAIService(provider=provider, model=model)
+    rag = FakeRAGService(provider=provider, model=model)
+
+    with Session(workflow_database) as db:
+        service, _, rag, _ = make_service(
+            rag_service=rag,
+            ai_service=ai,
+        )
+        conversation = create_conversation(db, service)
+
+        result = run(
+            service.append_customer_message(
+                db,
+                session_id=conversation.session_id,
+                content="How long do I have to request a refund?",
+            )
+        )
+
+        run_record = db.scalar(
+            select(AgentRun).where(
+                AgentRun.trace_id == result.agent_runs[0].trace_id
+            )
+        )
+
+        assert run_record is not None
+        assert run_record.status == "completed"
+        assert run_record.provider == provider
+        assert run_record.model == model
+        assert rag.retrieve_calls == 1
+        assert rag.generate_calls == 1
 
 
 def test_no_evidence_skips_generation_and_moves_to_human_review(

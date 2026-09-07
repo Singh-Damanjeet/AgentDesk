@@ -11,3 +11,11 @@ __pycache__/
 backend/data/*.db
 backend/data/secret.key
 backend/data/knowledge/
+
+# Frontend and local verification artifacts.
+node_modules/
+.next/
+out/
+build/
+.playwright-cli/
+output/

@@ -8,6 +8,7 @@ import {
   getAISettings,
   getCompanySettings,
 } from "@/lib/api";
+import { getAIProviderLabel, isAIProvider } from "@/lib/ai-providers";
 
 type StatusRowProps = {
   label: string;
@@ -30,7 +31,8 @@ export default function FinishSetupPage() {
   const router = useRouter();
 
   const [companyConfigured, setCompanyConfigured] = useState(false);
-  const [geminiConfigured, setGeminiConfigured] = useState(false);
+  const [aiProvider, setAIProvider] = useState<string | null>(null);
+  const [aiConfigured, setAIConfigured] = useState(false);
   const [loading, setLoading] = useState(true);
   const [finishing, setFinishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,10 +52,10 @@ export default function FinishSetupPage() {
         }
 
         setCompanyConfigured(Boolean(company?.name.trim()));
-        setGeminiConfigured(
-          aiProvider?.provider === "gemini" &&
-            aiProvider.api_key_configured,
+        setAIProvider(
+          isAIProvider(aiProvider?.provider) ? aiProvider.provider : null,
         );
+        setAIConfigured(Boolean(aiProvider?.api_key_configured));
       } catch (loadError) {
         if (!cancelled) {
           setError(
@@ -129,9 +131,11 @@ export default function FinishSetupPage() {
             <StatusRow
               label="AI Provider"
               value={
-                geminiConfigured ? "Gemini configured" : "Needs configuration"
+                aiConfigured
+                  ? `${getAIProviderLabel(aiProvider)} configured`
+                  : "Needs configuration"
               }
-              configured={geminiConfigured}
+              configured={aiConfigured}
             />
 
             <StatusRow

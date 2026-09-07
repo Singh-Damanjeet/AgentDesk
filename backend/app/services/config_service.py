@@ -2,7 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.ai_providers import (
-    GEMINI_PROVIDER,
+    api_key_label,
     is_supported_ai_configuration,
 )
 from app.models.ai_provider import AIProvider
@@ -71,12 +71,13 @@ class ConfigService:
             provider.model,
         ):
             raise ValueError(
-                f"Only the {GEMINI_PROVIDER} provider with a supported model "
-                "can complete setup."
+                "The selected AI provider or model is not supported."
             )
 
         if not provider.encrypted_api_key:
-            raise ValueError("A Gemini API key is required.")
+            raise ValueError(
+                f"A {api_key_label(provider.provider)} is required."
+            )
 
         return ConfigService.mark_configured(
             db,

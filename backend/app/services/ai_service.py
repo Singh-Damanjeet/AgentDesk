@@ -10,6 +10,7 @@ from app.ai.llm.base import LLMService
 from app.ai.llm.errors import LLMError
 from app.ai.llm.factory import LLMFactory
 from app.ai.llm.types import ChatMessage, LLMResponse
+from app.core.ai_providers import api_key_label, provider_display_name
 from app.core.secrets import decrypt_secret
 from app.services.ai_provider_service import AIProviderService
 
@@ -56,7 +57,7 @@ class AIService:
 
         if not provider.encrypted_api_key:
             raise AIConfigurationError(
-                "A Gemini API key is required."
+                f"A {api_key_label(provider.provider)} is required."
             )
 
         try:
@@ -100,7 +101,10 @@ class AIService:
         except LLMError as exc:
             return False, exc.user_message
 
-        return True, "Gemini connection successful."
+        return (
+            True,
+            f"{provider_display_name(provider)} connection successful.",
+        )
 
     async def chat(
         self,

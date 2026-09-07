@@ -1,3 +1,4 @@
+import os
 from collections.abc import Generator
 from pathlib import Path
 
@@ -6,7 +7,21 @@ from sqlalchemy.orm import Session, sessionmaker
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
-DATA_DIR = BACKEND_DIR / "data"
+
+
+def _configured_data_dir() -> Path:
+    configured_path = os.environ.get("AGENTDESK_DATA_DIR", "").strip()
+    if not configured_path:
+        return BACKEND_DIR / "data"
+
+    path = Path(configured_path).expanduser()
+    if not path.is_absolute():
+        path = BACKEND_DIR / path
+
+    return path.resolve()
+
+
+DATA_DIR = _configured_data_dir()
 DATABASE_PATH = DATA_DIR / "agentdesk.db"
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
